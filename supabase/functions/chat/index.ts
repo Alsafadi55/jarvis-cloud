@@ -76,7 +76,7 @@ Deno.serve(async (req: Request) => {
   if(authError||!authData.user)return json({error:"unauthorized"},401);
   const userId=authData.user.id;
 
-  let body:{action?:unknown;provider?:unknown;api_key?:unknown;model?:unknown;message?:unknown;conversation_id?:unknown;attachments?:unknown};
+  let body:{action?:unknown;provider?:unknown;api_key?:unknown;model?:unknown;message?:unknown;conversation_id?:unknown;attachments?:unknown;plugins?:unknown};
   try{body=await req.json();}catch{return json({error:"invalid_json"},400);}
   const provider=typeof body.provider==="string"?body.provider:"gemini";
   const cfg=providers[provider];
@@ -179,12 +179,19 @@ Deno.serve(async (req: Request) => {
         body:JSON.stringify({
           systemInstruction:{parts:[{text:"You are JARVIS, a helpful, clear, respectful personal AI assistant. Be honest about limitations and never claim an action was completed unless it was."}]},
           contents:[...ordered.slice(0,-1).map(m=>({role:m.role==="assistant"?"model":"user",parts:[{text:m.content}]})),{role:"user",parts:[{text:userPrompt},...imageAttachments.map(a=>({inline_data:{mime_type:a.type,data:a.data}})),...pdfAttachments.map(a=>({inline_data:{mime_type:"application/pdf",data:a.data}}))]}],
+          tools:Array.isArray(body.plugins)&&body.plugins.includes("web-search")?[{google_search:{}}]:undefined,
           generationConfig:{temperature:0.7,maxOutputTokens:2048},
         }),
         signal:controller.signal,
       });
       result=await response.json().catch(()=>({}));
-      if(response.ok)reply=(result.candidates?.[0]?.content?.parts??[]).map((p:any)=>p.text??"").join("").trim();
+      if(response.ok){
+        reply=(result.candidates?.[0]?.content?.parts??[]).map((p:any)=>p.text??"").join("").trim();
+        const chunks=result.candidates?.[0]?.groundingMetadata?.groundingChunks??[];
+        const sources=chunks.map((chunk:any)=>chunk.web).filter((web:any)=>web&&typeof web.uri==="string")
+          .slice(0,6).map((web:any,index:number)=>"["+(index+1)+"] "+String(web.title??"Source")+" — "+web.uri);
+        if(sources.length)reply+="\\n\\nSources:\\n"+sources.join("\\n");
+      }
     }else{
       response=await fetch(cfg.base+"/chat/completions",{
         method:"POST",
