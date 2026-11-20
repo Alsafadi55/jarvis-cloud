@@ -7,7 +7,7 @@ const configured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY &&
   !SUPABASE_URL.includes("YOUR_PROJECT") && !SUPABASE_ANON_KEY.includes("YOUR_"));
 const supabase = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-const state = { user: null, conversations: [], activeId: null, busy: false };
+const state = { user: null, conversations: [], activeId: null, busy: false, apiKey: "", models: [], selectedModel: "", providerConnected: false };
 const app = document.querySelector("#app");
 
 const icon = (name) => ({
@@ -28,8 +28,13 @@ function render() {
     document.querySelector("#signup").addEventListener("click", signUp);
     return;
   }
-  app.innerHTML = `<div class="workspace"><aside class="sidebar"><div class="brand"><div class="brand-mark">${icon("spark")}</div><span>JARVIS<span class="muted"> CLOUD</span></span></div><button class="new-chat" id="new-chat">${icon("plus")} New conversation</button><div class="side-label">YOUR HISTORY</div><div class="history" id="history">${state.conversations.map(c => `<button class="history-item ${c.id===state.activeId?"active":""}" data-id="${c.id}">${escapeHtml(c.title || "New conversation")}</button>`).join("") || '<div class="empty-history">Your conversations will appear here.</div>'}</div><div class="profile"><div class="avatar">${escapeHtml((state.user.email||"J").slice(0,1).toUpperCase())}</div><div class="profile-info"><b>${escapeHtml(state.user.email || "JARVIS user")}</b><span>Connected account</span></div><button class="icon-button" id="logout" aria-label="Sign out">${icon("logout")}</button></div></aside><main class="chat-area"><header class="topbar"><div><span class="online-dot"></span><span>JARVIS SYSTEM</span></div><span class="secure-label">PRIVATE SESSION</span></header><section class="conversation" id="conversation"><div class="welcome"><div class="welcome-orb">${icon("spark")}</div><div class="eyebrow">YOUR PERSONAL AI</div><h1>What can I help you<br><em>with today?</em></h1><p>Your cloud workspace is connected. Start a conversation with JARVIS.</p><div class="suggestions"><button data-prompt="Help me organize my projects">Organize my projects <span>↗</span></button><button data-prompt="Explain how JARVIS Cloud works">Explain JARVIS Cloud <span>↗</span></button><button data-prompt="Help me plan my next week">Plan my week <span>↗</span></button></div></div></section><div class="composer-wrap"><div id="chat-feedback" class="chat-feedback" role="status"></div><form class="composer" id="chat-form"><textarea id="message" rows="1" placeholder="Message JARVIS..." maxlength="20000" required></textarea><button class="send-button" type="submit" aria-label="Send message">${icon("send")}</button></form><div class="composer-hint">JARVIS can make mistakes. Verify important information.</div></div></main></div>`;
+  app.innerHTML = `<div class="workspace"><aside class="sidebar"><div class="brand"><div class="brand-mark">${icon("spark")}</div><span>JARVIS<span class="muted"> CLOUD</span></span></div><button class="new-chat" id="new-chat">${icon("plus")} New conversation</button><div class="side-label">YOUR HISTORY</div><div class="history" id="history">${state.conversations.map(c => `<button class="history-item ${c.id===state.activeId?"active":""}" data-id="${c.id}">${escapeHtml(c.title || "New conversation")}</button>`).join("") || '<div class="empty-history">Your conversations will appear here.</div>'}</div><div class="profile"><div class="avatar">${escapeHtml((state.user.email||"J").slice(0,1).toUpperCase())}</div><div class="profile-info"><b>${escapeHtml(state.user.email || "JARVIS user")}</b><span>Connected account</span></div><button class="icon-button" id="logout" aria-label="Sign out">${icon("logout")}</button></div></aside><main class="chat-area"><header class="topbar"><div><span class="online-dot"></span><span>JARVIS SYSTEM</span></div><div class="topbar-actions"><span class="secure-label">PRIVATE SESSION</span><button class="models-toggle" id="open-models" type="button">Models & API <span>↗</span></button></div></header><section class="conversation" id="conversation"><div class="welcome"><div class="welcome-orb">${icon("spark")}</div><div class="eyebrow">YOUR PERSONAL AI</div><h1>What can I help you<br><em>with today?</em></h1><p>Your cloud workspace is connected. Start a conversation with JARVIS.</p><div class="suggestions"><button data-prompt="Help me organize my projects">Organize my projects <span>↗</span></button><button data-prompt="Explain how JARVIS Cloud works">Explain JARVIS Cloud <span>↗</span></button><button data-prompt="Help me plan my next week">Plan my week <span>↗</span></button></div></div></section><div class="composer-wrap"><div id="chat-feedback" class="chat-feedback" role="status"></div><form class="composer" id="chat-form"><textarea id="message" rows="1" placeholder="Message JARVIS..." maxlength="20000" required></textarea><button class="send-button" type="submit" aria-label="Send message">${icon("send")}</button></form><div class="composer-hint">JARVIS can make mistakes. Verify important information.</div></div></main><aside class="models-drawer" id="models-drawer"><div class="drawer-head"><div><div class="eyebrow">MODEL SETTINGS</div><h2>Connect provider</h2></div><button class="icon-button" id="close-models" aria-label="Close">×</button></div><label class="api-label" for="openai-key">OpenAI API key</label><input class="api-key-input" id="openai-key" type="password" autocomplete="off" placeholder="Paste your API key here"><button class="primary connect-button" id="connect-openai" type="button">Connect & load models</button><div class="key-note">Your key stays in this browser tab memory and is sent securely to JARVIS only when needed. It is not saved to the database. Re-enter it after refreshing.</div><div id="provider-feedback" class="feedback" role="status"></div><div class="model-list-head"><span>AVAILABLE MODELS</span><button id="refresh-models" type="button">Refresh</button></div><div id="model-list"><div class="empty-history">Connect your API key to load available models.</div></div><button class="secondary disconnect-button" id="disconnect-openai" type="button">Disconnect OpenAI</button></aside></div>`;
   document.querySelector("#logout").addEventListener("click", signOut);
+  document.querySelector("#open-models").addEventListener("click", () => document.querySelector("#models-drawer").classList.add("open"));
+  document.querySelector("#close-models").addEventListener("click", () => document.querySelector("#models-drawer").classList.remove("open"));
+  document.querySelector("#connect-openai").addEventListener("click", connectOpenAI);
+  document.querySelector("#refresh-models").addEventListener("click", refreshOpenAIModels);
+  document.querySelector("#disconnect-openai").addEventListener("click", disconnectOpenAI);
   document.querySelector("#new-chat").addEventListener("click", newConversation);
   document.querySelector("#chat-form").addEventListener("submit", sendMessage);
   document.querySelectorAll("[data-prompt]").forEach(b => b.addEventListener("click", () => { document.querySelector("#message").value = b.dataset.prompt; document.querySelector("#message").focus(); }));
@@ -90,6 +95,27 @@ function showWelcome() {
   const area = document.querySelector("#conversation");
   if (area) area.innerHTML = `<div class="welcome compact"><div class="welcome-orb">${icon("spark")}</div><div class="eyebrow">CONVERSATION SELECTED</div><h1>Ready when<br><em>you are.</em></h1><p>Your messages and replies are saved in this conversation.</p></div>`;
 }
+async function connectOpenAI() {
+  const key = document.querySelector("#openai-key").value.trim();
+  if (!key) return feedback("provider-feedback", "Paste your OpenAI API key first.");
+  const btn = document.querySelector("#connect-openai"); btn.disabled = true; btn.textContent = "Checking key...";
+  try {
+    const { data, error } = await supabase.functions.invoke("chat", { body: { action:"models", provider:"openai", api_key:key } });
+    if (error || data?.error) throw new Error(data?.message || data?.error || error?.message || "Could not load models.");
+    state.apiKey = key; state.models = data.models || []; state.selectedModel = state.models[0]?.id || ""; state.providerConnected = true;
+    feedback("provider-feedback", "Connected. Choose a model from the list.", "success");
+    render(); document.querySelector("#models-drawer").classList.add("open");
+  } catch (err) { feedback("provider-feedback", err.message || "Connection failed."); }
+  finally { const b=document.querySelector("#connect-openai"); if(b){b.disabled=false;b.textContent="Connect & load models";} }
+}
+async function refreshOpenAIModels() {
+  if (!state.apiKey) return feedback("provider-feedback", "Connect your API key first.");
+  const { data, error } = await supabase.functions.invoke("chat", { body: { action:"models", provider:"openai", api_key:state.apiKey } });
+  if (error || data?.error) return feedback("provider-feedback", data?.message || error?.message || "Could not refresh models.");
+  state.models = data.models || []; if (!state.models.some(m=>m.id===state.selectedModel)) state.selectedModel=state.models[0]?.id || "";
+  render(); document.querySelector("#models-drawer").classList.add("open");
+}
+function disconnectOpenAI() { state.apiKey=""; state.models=[]; state.selectedModel=""; state.providerConnected=false; render(); }
 async function sendMessage(e) {
   e.preventDefault();
   const input = document.querySelector("#message");
@@ -102,7 +128,7 @@ async function sendMessage(e) {
   area.innerHTML = `<div class="message user-message">${escapeHtml(message)}</div><div class="message assistant-message"><div class="typing"><i></i><i></i><i></i></div></div>`;
   input.value = "";
   try {
-    const { data, error } = await supabase.functions.invoke("chat", { body: { message, conversation_id:state.activeId } });
+    const { data, error } = await supabase.functions.invoke("chat", { body: { message, conversation_id:state.activeId, provider:state.apiKey ? "openai" : "gemini", api_key:state.apiKey || undefined, model:state.selectedModel || undefined } });
     state.busy = false;
     if (error || data?.error) {
       const detail = data?.message || data?.error || error?.message || "Request failed.";
