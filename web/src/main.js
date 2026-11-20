@@ -239,12 +239,15 @@ async function handleChatFiles(event){
   const path=state.user.id+"/chat/"+crypto.randomUUID()+"-"+file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
   const {error}=await supabase.storage.from("jarvis-user-files").upload(path,file,{upsert:false});
   if(error){feedback("chat-feedback",error.message);continue;}
-  const textLike=file.type.startsWith("text/")||/\\.(md|js|ts|py|html|css|json)$/i.test(file.name);\n  const text=textLike?await file.text():"";\n  state.attachments.push({name:file.name,type:file.type||"application/octet-stream",path,text:text.slice(0,100000)}); 
+  const textLike=file.type.startsWith("text/")||/\.(md|js|ts|py|html|css|json)$/i.test(file.name);
+  const text=textLike?await file.text():"";
+  state.attachments.push({name:file.name,type:file.type||"application/octet-stream",path,text:text.slice(0,100000)}); 
  }
  renderAttachmentList();event.target.value="";
 }
 function renderAttachmentList(){const root=document.querySelector("#attachment-list");if(!root)return;root.innerHTML=state.attachments.map((x,i)=>`<span class="file-chip">📎 ${escapeHtml(x.name)} <button type="button" data-remove-file="${i}">×</button></span>`).join("");root.querySelectorAll("[data-remove-file]").forEach(b=>b.addEventListener("click",async()=>{const item=state.attachments[Number(b.dataset.removeFile)];await supabase.storage.from("jarvis-user-files").remove([item.path]);state.attachments.splice(Number(b.dataset.removeFile),1);renderAttachmentList();}));}
-\nasync function boot() {
+
+async function boot() {
   render();
   if (!configured) return;
   const { data } = await supabase.auth.getSession();
