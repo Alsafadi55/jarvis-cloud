@@ -176,7 +176,9 @@ async function sendMessage(e) {
     const {data,error}=await supabase.functions.invoke("chat",{body:{
       message,conversation_id:state.activeId,provider:state.selectedProvider,
       api_key:state.providerKeys[state.selectedProvider]&&state.providerKeys[state.selectedProvider]!=="__SERVER_GEMINI__"?state.providerKeys[state.selectedProvider]:undefined,
-      model:state.selectedModel,attachments:sentFiles.map(x=>({name:x.name,type:x.type,path:x.path,text:x.text||""}))
+      model:state.selectedModel,
+      plugins:state.plugins.filter(x=>x.enabled).map(x=>x.plugin_id),
+      attachments:sentFiles.map(x=>({name:x.name,type:x.type,path:x.path,text:x.text||""}))
     }});
     if(error||data?.error)throw new Error(data?.message||data?.error||error?.message||"Request failed.");
     area.innerHTML=`<div class="message user-message">${escapeHtml(message)}${sentFiles.map(x=>`<div class="file-chip">📎 ${escapeHtml(x.name)}</div>`).join("")}</div><div class="message assistant-message">${escapeHtml(data.message).replace(/\n/g,"<br>")}</div>`;
@@ -190,7 +192,7 @@ async function sendMessage(e) {
 }
 
 const PLUGIN_CATALOG=[
- {id:"web-search",name:"Web Search",description:"Search the public web for current information.",category:"Research",status:"Coming soon"},
+ {id:"web-search",name:"Web Search",description:"Search the live web with Google Search grounding when JARVIS uses a Gemini model.",category:"Research",status:"Available"},
  {id:"github",name:"GitHub",description:"Explore repositories, issues, and code.",category:"Development",status:"Coming soon"},
  {id:"google-drive",name:"Google Drive",description:"Connect documents and cloud files.",category:"Storage",status:"Coming soon"},
  {id:"gmail",name:"Gmail",description:"Find messages and prepare email drafts.",category:"Productivity",status:"Coming soon"},
@@ -229,7 +231,23 @@ async function uploadSkillFiles(files){
  await loadSkills();renderSkillsPage(area);
 }
 function renderPluginsPage(area){
- area.innerHTML=`<div class="library-page"><div class="eyebrow">EXTEND YOUR ASSISTANT</div><h1>Plugin <em>Store</em></h1><p class="library-intro">Discover integrations for JARVIS. These are catalog entries; an integration is only usable after its secure connector is implemented and authorized.</p><div class="library-grid">${PLUGIN_CATALOG.map(p=>{const active=state.plugins.find(x=>x.plugin_id===p.id)?.enabled;return `<article class="library-card"><div class="library-card-top"><span class="plugin-category">${p.category}</span><span class="coming-soon">${p.status}</span></div><h3>${p.name}</h3><p>${p.description}</p><button class="plugin-toggle" data-plugin="${p.id}" disabled title="Connector integration is not implemented yet">Unavailable until connected</button></article>`;}).join("")}</div></div>`;
+ area.innerHTML=`<div class="library-page"><div class="eyebrow">EXTEND YOUR ASSISTANT</div><h1>Plugin <em>Store</em></h1><p class="library-intro">Enable real integrations for JARVIS. Web Search uses Gemini's built-in Google Search grounding; select a Gemini model in Models & API to use it.</p><div class="library-grid">${PLUGIN_CATALOG.map(p=>{const active=!!state.plugins.find(x=>x.plugin_id===p.id)?.enabled;const available=p.id==="web-search";return `<article class="library-card"><div class="library-card-top"><span class="plugin-category">${p.category}</span><span class="coming-soon">${available?(active?"ENABLED":"AVAILABLE"):p.status.toUpperCase()}</span></div><h3>${p.name}</h3><p>${p.description}</p><button class="plugin-toggle" data-plugin="${p.id}" ${available?"":"disabled"}>${available?(active?"Disable Web Search":"Enable Web Search"):"Coming soon"}</button></article>`;}).join("")}</div></div>`;
+ area.querySelectorAll('[data-plugin="web-search"]').forEach(b=>b.addEventListener("click",()=>togglePlugin("web-search")));
+}
+async function togglePlugin(pluginId){
+ const current=state.plugins.find(x=>x.plugin_id===pluginId);
+ const enabled=!current?.enabled;
+ let result;
+ if(current){
+  result=await supabase.from("user_plugins").update({enabled}).eq("id",current.id);
+ }else{
+  result=await supabase.from("user_plugins").insert({user_id:state.user.id,plugin_id:pluginId,enabled,settings:{}});
+ }
+ if(result.error){feedback("chat-feedback",result.error.message);return;}
+ await loadPlugins();
+ const area=document.querySelector("#conversation");
+ if(area&&state.view==="plugins")renderPluginsPage(area);
+ feedback("chat-feedback",enabled?"Web Search enabled. Choose a Gemini model to use it.":"Web Search disabled.","success");
 }
 async function handleChatFiles(event){
  const files=[...event.target.files];const allowed=["image/jpeg","image/png","image/webp","application/pdf","text/plain","text/markdown","application/json","text/javascript","text/css","text/html"];
