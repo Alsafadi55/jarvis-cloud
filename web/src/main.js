@@ -28,13 +28,13 @@ function render() {
     document.querySelector("#signup").addEventListener("click", signUp);
     return;
   }
-  app.innerHTML = `<div class="workspace"><aside class="sidebar"><div class="brand"><div class="brand-mark">${icon("spark")}</div><span>JARVIS<span class="muted"> CLOUD</span></span></div><button class="new-chat" id="new-chat">${icon("plus")} New conversation</button><div class="side-label">YOUR HISTORY</div><div class="history" id="history">${state.conversations.map(c => `<button class="history-item ${c.id===state.activeId?"active":""}" data-id="${c.id}">${escapeHtml(c.title || "New conversation")}</button>`).join("") || '<div class="empty-history">Your conversations will appear here.</div>'}</div><div class="profile"><div class="avatar">${escapeHtml((state.user.email||"J").slice(0,1).toUpperCase())}</div><div class="profile-info"><b>${escapeHtml(state.user.email || "JARVIS user")}</b><span>Connected account</span></div><button class="icon-button" id="logout" aria-label="Sign out">${icon("logout")}</button></div></aside><main class="chat-area"><header class="topbar"><div><span class="online-dot"></span><span>JARVIS SYSTEM</span></div><span class="secure-label">PRIVATE SESSION</span></header><section class="conversation" id="conversation"><div class="welcome"><div class="welcome-orb">${icon("spark")}</div><div class="eyebrow">YOUR PERSONAL AI</div><h1>What can I help you<br><em>with today?</em></h1><p>Your cloud workspace is connected. AI responses will become available after a provider is configured.</p><div class="suggestions"><button data-prompt="Help me organize my projects">Organize my projects <span>↗</span></button><button data-prompt="Explain how JARVIS Cloud works">Explain JARVIS Cloud <span>↗</span></button><button data-prompt="Help me plan my next week">Plan my week <span>↗</span></button></div></div></section><div class="composer-wrap"><div id="chat-feedback" class="chat-feedback" role="status"></div><form class="composer" id="chat-form"><textarea id="message" rows="1" placeholder="Message JARVIS..." maxlength="20000" required></textarea><button class="send-button" type="submit" aria-label="Send message">${icon("send")}</button></form><div class="composer-hint">JARVIS can make mistakes. Verify important information.</div></div></main></div>`;
+  app.innerHTML = `<div class="workspace"><aside class="sidebar"><div class="brand"><div class="brand-mark">${icon("spark")}</div><span>JARVIS<span class="muted"> CLOUD</span></span></div><button class="new-chat" id="new-chat">${icon("plus")} New conversation</button><div class="side-label">YOUR HISTORY</div><div class="history" id="history">${state.conversations.map(c => `<button class="history-item ${c.id===state.activeId?"active":""}" data-id="${c.id}">${escapeHtml(c.title || "New conversation")}</button>`).join("") || '<div class="empty-history">Your conversations will appear here.</div>'}</div><div class="profile"><div class="avatar">${escapeHtml((state.user.email||"J").slice(0,1).toUpperCase())}</div><div class="profile-info"><b>${escapeHtml(state.user.email || "JARVIS user")}</b><span>Connected account</span></div><button class="icon-button" id="logout" aria-label="Sign out">${icon("logout")}</button></div></aside><main class="chat-area"><header class="topbar"><div><span class="online-dot"></span><span>JARVIS SYSTEM</span></div><span class="secure-label">PRIVATE SESSION</span></header><section class="conversation" id="conversation"><div class="welcome"><div class="welcome-orb">${icon("spark")}</div><div class="eyebrow">YOUR PERSONAL AI</div><h1>What can I help you<br><em>with today?</em></h1><p>Your cloud workspace is connected. Start a conversation with JARVIS.</p><div class="suggestions"><button data-prompt="Help me organize my projects">Organize my projects <span>↗</span></button><button data-prompt="Explain how JARVIS Cloud works">Explain JARVIS Cloud <span>↗</span></button><button data-prompt="Help me plan my next week">Plan my week <span>↗</span></button></div></div></section><div class="composer-wrap"><div id="chat-feedback" class="chat-feedback" role="status"></div><form class="composer" id="chat-form"><textarea id="message" rows="1" placeholder="Message JARVIS..." maxlength="20000" required></textarea><button class="send-button" type="submit" aria-label="Send message">${icon("send")}</button></form><div class="composer-hint">JARVIS can make mistakes. Verify important information.</div></div></main></div>`;
   document.querySelector("#logout").addEventListener("click", signOut);
   document.querySelector("#new-chat").addEventListener("click", newConversation);
   document.querySelector("#chat-form").addEventListener("submit", sendMessage);
   document.querySelectorAll("[data-prompt]").forEach(b => b.addEventListener("click", () => { document.querySelector("#message").value = b.dataset.prompt; document.querySelector("#message").focus(); }));
   document.querySelectorAll("[data-id]").forEach(b => b.addEventListener("click", () => selectConversation(b.dataset.id)));
-  if (state.activeId) showWelcome();
+  if (state.activeId) loadMessages(state.activeId);
 }
 
 function escapeHtml(value) {
@@ -62,7 +62,7 @@ async function signUp() {
   state.user = data.user; await afterAuth();
 }
 async function signOut() { await supabase.auth.signOut(); state.user = null; state.conversations = []; state.activeId = null; render(); }
-async function afterAuth() { await loadConversations(); render(); }
+async function afterAuth() { await loadConversations(); render(); if (state.activeId) await loadMessages(state.activeId); }
 async function loadConversations() {
   const { data, error } = await supabase.from("conversations").select("id,title,updated_at").order("updated_at", { ascending:false }).limit(50);
   if (error) { console.error(error); return; }
@@ -74,10 +74,21 @@ async function newConversation() {
   if (error) return feedback("chat-feedback", error.message);
   state.conversations.unshift(data); state.activeId = data.id; render();
 }
-function selectConversation(id) { state.activeId = id; render(); }
+async function selectConversation(id) { state.activeId = id; render(); await loadMessages(id); }
+async function loadMessages(id) {
+  const area = document.querySelector("#conversation");
+  if (!area) return;
+  area.innerHTML = '<div class="message assistant-message">Loading conversation...</div>';
+  const { data, error } = await supabase.from("messages").select("role,content")
+    .eq("conversation_id", id).order("created_at", { ascending: true }).limit(100);
+  if (error) { area.innerHTML = '<div class="system-notice"><p>Could not load this conversation.</p></div>'; return; }
+  if (!data?.length) { showWelcome(); return; }
+  area.innerHTML = data.map(m => `<div class="message ${m.role === "user" ? "user-message" : "assistant-message"}">${escapeHtml(m.content).replace(/\\n/g, "<br>")}</div>`).join("");
+  area.scrollTop = area.scrollHeight;
+}
 function showWelcome() {
   const area = document.querySelector("#conversation");
-  if (area) area.innerHTML = `<div class="welcome compact"><div class="welcome-orb">${icon("spark")}</div><div class="eyebrow">CONVERSATION SELECTED</div><h1>Ready when<br><em>you are.</em></h1><p>Message history loading will be enabled with the next chat persistence update.</p></div>`;
+  if (area) area.innerHTML = `<div class="welcome compact"><div class="welcome-orb">${icon("spark")}</div><div class="eyebrow">CONVERSATION SELECTED</div><h1>Ready when<br><em>you are.</em></h1><p>Your messages and replies are saved in this conversation.</p></div>`;
 }
 async function sendMessage(e) {
   e.preventDefault();
@@ -90,11 +101,22 @@ async function sendMessage(e) {
   const area = document.querySelector("#conversation");
   area.innerHTML = `<div class="message user-message">${escapeHtml(message)}</div><div class="message assistant-message"><div class="typing"><i></i><i></i><i></i></div></div>`;
   input.value = "";
-  const { data, error } = await supabase.functions.invoke("chat", { body: { message, conversation_id:state.activeId } });
-  state.busy = false;
-  const reply = error ? (error.message || "Request failed.") : (data?.message || data?.error || "The server did not return a response.");
-  area.innerHTML += `<div class="system-notice"><b>JARVIS STATUS</b><p>${escapeHtml(reply === "provider_not_configured" ? "Your account is connected. The AI provider has not been configured yet." : reply)}</p></div>`;
-  if (data?.error === "provider_not_configured" || error) feedback("chat-feedback", "Authentication is working. AI generation is the next backend step.", "success");
+  try {
+    const { data, error } = await supabase.functions.invoke("chat", { body: { message, conversation_id:state.activeId } });
+    state.busy = false;
+    if (error || data?.error) {
+      const detail = data?.message || data?.error || error?.message || "Request failed.";
+      area.innerHTML += `<div class="system-notice"><b>JARVIS STATUS</b><p>${escapeHtml(detail)}</p></div>`;
+      feedback("chat-feedback", detail, "error");
+    } else {
+      area.innerHTML = `<div class="message user-message">${escapeHtml(message)}</div><div class="message assistant-message">${escapeHtml(data.message).replace(/\\n/g, "<br>")}</div>`;
+    }
+  } catch {
+    state.busy = false;
+    const detail = "Connection problem. Please try again.";
+    area.innerHTML += `<div class="system-notice"><p>${detail}</p></div>`;
+    feedback("chat-feedback", detail, "error");
+  }
   area.scrollTop = area.scrollHeight;
 }
 async function boot() {
