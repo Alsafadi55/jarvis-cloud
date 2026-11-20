@@ -135,7 +135,7 @@ async function connectProvider(provider){
 }
 async function refreshAllModels(){
  const pairs=Object.entries(state.providerKeys);if(!pairs.length)return feedback("provider-feedback","Connect a provider first.");
- for(const pair of pairs){const provider=pair[0],key=pair[1];const result=await supabase.functions.invoke("chat",{body:{action:"models",provider:provider,api_key:key}});if(!result.error&&!result.data?.error)state.models=state.models.filter(m=>m.provider!==provider).concat((result.data.models||[]).map(m=>({provider:provider,providerName:PROVIDERS.find(p=>p.id===provider).name,id:m.id})));else feedback("provider-feedback","Could not refresh "+provider+".");}
+ for(const pair of pairs){const provider=pair[0],key=pair[1];const result=await supabase.functions.invoke("chat",{body:{action:"models",provider:provider,api_key:key==="__SERVER_GEMINI__"?undefined:key}});if(!result.error&&!result.data?.error)state.models=state.models.filter(m=>m.provider!==provider).concat((result.data.models||[]).map(m=>({provider:provider,providerName:PROVIDERS.find(p=>p.id===provider).name,id:m.id})));else feedback("provider-feedback","Could not refresh "+provider+".");}
  renderModelList();feedback("provider-feedback","Model list refreshed.","success");
 }
 function disconnectProvider(provider){
@@ -180,7 +180,7 @@ async function boot() {
   if (state.user) await afterAuth();
   supabase.auth.onAuthStateChange((_event, session) => {
     state.user = session?.user || null;
-    if (!state.user) { state.conversations=[]; state.activeId=null; render(); }
+    if (!state.user) { state.conversations=[]; state.activeId=null; state.providerKeys={}; state.models=[]; state.selectedProvider="gemini"; state.selectedModel=""; render(); }
   });
 }
 boot();
