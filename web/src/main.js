@@ -35,6 +35,15 @@ function render() {
   document.querySelector("#connect-openai").addEventListener("click", connectOpenAI);
   document.querySelector("#refresh-models").addEventListener("click", refreshOpenAIModels);
   document.querySelector("#disconnect-openai").addEventListener("click", disconnectOpenAI);
+  const modelList = document.querySelector("#model-list");
+  if (modelList) {
+    modelList.innerHTML = state.models.length ? state.models.map(m => '<button class="model-option '+(m.id===state.selectedModel?'selected':'')+'" data-model="'+escapeHtml(m.id)+'"><b>'+escapeHtml(m.id)+'</b><span>'+(m.id===state.selectedModel?'Selected':'OpenAI model')+'</span></button>').join("") : '<div class="empty-history">Connect your API key to load available models.</div>';
+    modelList.querySelectorAll("[data-model]").forEach(b => b.addEventListener("click", () => {
+      state.selectedModel = b.dataset.model;
+      modelList.querySelectorAll(".model-option").forEach(el => { el.classList.toggle("selected", el.dataset.model===state.selectedModel); el.querySelector("span").textContent = el.dataset.model===state.selectedModel ? "Selected" : "OpenAI model"; });
+    }));
+  }
+
   document.querySelector("#new-chat").addEventListener("click", newConversation);
   document.querySelector("#chat-form").addEventListener("submit", sendMessage);
   document.querySelectorAll("[data-prompt]").forEach(b => b.addEventListener("click", () => { document.querySelector("#message").value = b.dataset.prompt; document.querySelector("#message").focus(); }));
@@ -103,8 +112,7 @@ async function connectOpenAI() {
     const { data, error } = await supabase.functions.invoke("chat", { body: { action:"models", provider:"openai", api_key:key } });
     if (error || data?.error) throw new Error(data?.message || data?.error || error?.message || "Could not load models.");
     state.apiKey = key; state.models = data.models || []; state.selectedModel = state.models[0]?.id || ""; state.providerConnected = true;
-    feedback("provider-feedback", "Connected. Choose a model from the list.", "success");
-    render(); document.querySelector("#models-drawer").classList.add("open");
+    render(); document.querySelector("#models-drawer").classList.add("open"); feedback("provider-feedback", "Connected. Choose a model from the list.", "success");
   } catch (err) { feedback("provider-feedback", err.message || "Connection failed."); }
   finally { const b=document.querySelector("#connect-openai"); if(b){b.disabled=false;b.textContent="Connect & load models";} }
 }
