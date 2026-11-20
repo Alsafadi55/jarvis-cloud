@@ -69,7 +69,7 @@ async function signUp() {
   state.user = data.user; await afterAuth();
 }
 async function signOut() { await supabase.auth.signOut(); state.user = null; state.conversations = []; state.activeId = null; state.providerKeys = {}; state.models = []; state.selectedProvider = "gemini"; state.selectedModel = ""; render(); }
-async function afterAuth() { await loadConversations(); render(); if (state.activeId) await loadMessages(state.activeId); }
+async function afterAuth() { await loadConversations(); await loadServerGemini(); render(); if (state.activeId) await loadMessages(state.activeId); }
 async function loadConversations() {
   const { data, error } = await supabase.from("conversations").select("id,title,updated_at").order("updated_at", { ascending:false }).limit(50);
   if (error) { console.error(error); return; }
@@ -96,6 +96,15 @@ async function loadMessages(id) {
 function showWelcome() {
   const area = document.querySelector("#conversation");
   if (area) area.innerHTML = `<div class="welcome compact"><div class="welcome-orb">${icon("spark")}</div><div class="eyebrow">CONVERSATION SELECTED</div><h1>Ready when<br><em>you are.</em></h1><p>Your messages and replies are saved in this conversation.</p></div>`;
+}
+async function loadServerGemini(){
+ try{
+  const result=await supabase.functions.invoke("chat",{body:{action:"models",provider:"gemini"}});
+  if(result.error||result.data?.error)return;
+  state.providerKeys.gemini="__SERVER_GEMINI__";
+  state.models=state.models.filter(m=>m.provider!=="gemini").concat((result.data.models||[]).map(m=>({provider:"gemini",providerName:"Google Gemini (server key)",id:m.id})));
+  if(!state.selectedModel){state.selectedProvider="gemini";state.selectedModel=state.models.find(m=>m.provider==="gemini")?.id||"";}
+ }catch(e){console.warn("Server Gemini model discovery unavailable.");}
 }
 function renderProviderCards(){
  const root=document.querySelector("#provider-cards");if(!root)return;
@@ -146,7 +155,7 @@ async function sendMessage(e) {
   area.innerHTML = `<div class="message user-message">${escapeHtml(message)}</div><div class="message assistant-message"><div class="typing"><i></i><i></i><i></i></div></div>`;
   input.value = "";
   try {
-    const { data, error } = await supabase.functions.invoke("chat", { body: { message, conversation_id:state.activeId, provider:state.selectedProvider, api_key:state.providerKeys[state.selectedProvider] || undefined, model:state.selectedModel || undefined } });
+    const { data, error } = await supabase.functions.invoke("chat", { body: { message, conversation_id:state.activeId, provider:state.selectedProvider, api_key:state.providerKeys[state.selectedProvider] && state.providerKeys[state.selectedProvider] !== "__SERVER_GEMINI__" ? state.providerKeys[state.selectedProvider] : undefined, model:state.selectedModel || undefined } });
     state.busy = false;
     if (error || data?.error) {
       const detail = data?.message || data?.error || error?.message || "Request failed.";
