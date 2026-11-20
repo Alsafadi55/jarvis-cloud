@@ -75,7 +75,7 @@ async function signUp() {
   if (!data.session) return feedback("auth-error", "Account created. Check your email to confirm it, then sign in.", "success");
   state.user = data.user; await afterAuth();
 }
-async function signOut() { await supabase.auth.signOut(); state.user = null; state.conversations = []; state.activeId = null; render(); }
+async function signOut() { await supabase.auth.signOut(); state.user = null; state.conversations = []; state.activeId = null; state.apiKey = ""; state.models = []; state.selectedModel = ""; state.providerConnected = false; render(); }
 async function afterAuth() { await loadConversations(); render(); if (state.activeId) await loadMessages(state.activeId); }
 async function loadConversations() {
   const { data, error } = await supabase.from("conversations").select("id,title,updated_at").order("updated_at", { ascending:false }).limit(50);
