@@ -41,7 +41,7 @@ async function getModels(provider: string, key: string) {
   if (provider === "gemini") {
     rows = (result.models ?? [])
       .filter((m:any) => (m.supportedGenerationMethods ?? []).includes("generateContent"))
-      .map((m:any) => ({id:String(m.name ?? "").replace(/^models\\//,"")}));
+      .map((m:any) => ({id:(String(m.name ?? "").startsWith("models/") ? String(m.name).slice(7) : String(m.name ?? ""))}));
   } else {
     rows = (result.data ?? []).map((m:any) => ({id:typeof m.id === "string" ? m.id : (typeof m.name === "string" ? m.name : "")}));
   }
