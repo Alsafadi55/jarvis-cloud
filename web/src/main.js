@@ -156,38 +156,32 @@ function disconnectProvider(provider){
 }
 async function sendMessage(e) {
   e.preventDefault();
-  const input = document.querySelector("#message");
-  const message = input.value.trim();
-  if ((!message && !state.attachments.length) || state.busy) return;
-  if (!state.activeId) await newConversation();
-  if (!state.activeId) return;
-  const currentInput = document.querySelector("#message");
-  if (currentInput) currentInput.value = "";
-  if (!state.selectedModel) {
-    feedback("chat-feedback", "Open Models & API, connect a provider, and select a model before sending.");
-    return;
-  }
-  state.busy = true;
-  const area = document.querySelector("#conversation");
-  area.innerHTML = `<div class="message user-message">${escapeHtml(message)}</div><div class="message assistant-message"><div class="typing"><i></i><i></i><i></i></div></div>`;
-  input.value = "";
-  try {
-    const { data, error } = await supabase.functions.invoke("chat", { body: { message, conversation_id:state.activeId, provider:state.selectedProvider, api_key:state.providerKeys[state.selectedProvider] && state.providerKeys[state.selectedProvider] !== "__SERVER_GEMINI__" ? state.providerKeys[state.selectedProvider] : undefined, model:state.selectedModel || undefined } });
-    state.busy = false;
-    if (error || data?.error) {
-      const detail = data?.message || data?.error || error?.message || "Request failed.";
-      area.innerHTML += `<div class="system-notice"><b>JARVIS STATUS</b><p>${escapeHtml(detail)}</p></div>`;
-      feedback("chat-feedback", detail, "error");
-    } else {
-      area.innerHTML = `<div class="message user-message">${escapeHtml(message)}${state.attachments.map(x=>`<div class="file-chip">📎 ${escapeHtml(x.name)}</div>`).join("")}</div><div class="message assistant-message">${escapeHtml(data.message).replace(/\\n/g, "<br>")}</div>`;\n      state.attachments=[];renderAttachmentList();
-    }
-  } catch {
-    state.busy = false;
-    const detail = "Connection problem. Please try again.";
-    area.innerHTML += `<div class="system-notice"><p>${detail}</p></div>`;
-    feedback("chat-feedback", detail, "error");
-  }
-  area.scrollTop = area.scrollHeight;
+  const input=document.querySelector("#message");
+  const message=input.value.trim();
+  if((!message&&!state.attachments.length)||state.busy)return;
+  if(!state.selectedModel)return feedback("chat-feedback","Open Models & API, connect a provider, and select a model before sending.");
+  if(!state.activeId)await newConversation();
+  if(!state.activeId)return;
+  state.busy=true;
+  const area=document.querySelector("#conversation");
+  const sentFiles=state.attachments.slice();
+  area.innerHTML=`<div class="message user-message">${escapeHtml(message)}${sentFiles.map(x=>`<div class="file-chip">📎 ${escapeHtml(x.name)}</div>`).join("")}</div><div class="message assistant-message"><div class="typing"><i></i><i></i><i></i></div></div>`;
+  input.value="";
+  try{
+    const {data,error}=await supabase.functions.invoke("chat",{body:{
+      message,conversation_id:state.activeId,provider:state.selectedProvider,
+      api_key:state.providerKeys[state.selectedProvider]&&state.providerKeys[state.selectedProvider]!=="__SERVER_GEMINI__"?state.providerKeys[state.selectedProvider]:undefined,
+      model:state.selectedModel,attachments:sentFiles.map(x=>({name:x.name,type:x.type,path:x.path,text:x.text||""}))
+    }});
+    if(error||data?.error)throw new Error(data?.message||data?.error||error?.message||"Request failed.");
+    area.innerHTML=`<div class="message user-message">${escapeHtml(message)}${sentFiles.map(x=>`<div class="file-chip">📎 ${escapeHtml(x.name)}</div>`).join("")}</div><div class="message assistant-message">${escapeHtml(data.message).replace(/\n/g,"<br>")}</div>`;
+    for(const file of sentFiles)await supabase.storage.from("jarvis-user-files").remove([file.path]);
+    state.attachments=[];renderAttachmentList();feedback("chat-feedback","", "success");
+  }catch(err){
+    const detail=err.message||"Connection problem. Please try again.";
+    area.innerHTML+=`<div class="system-notice"><b>JARVIS STATUS</b><p>${escapeHtml(detail)}</p></div>`;
+    feedback("chat-feedback",detail,"error");
+  }finally{state.busy=false;area.scrollTop=area.scrollHeight;}
 }
 
 const PLUGIN_CATALOG=[
@@ -240,7 +234,7 @@ async function handleChatFiles(event){
   const path=state.user.id+"/chat/"+crypto.randomUUID()+"-"+file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
   const {error}=await supabase.storage.from("jarvis-user-files").upload(path,file,{upsert:false});
   if(error){feedback("chat-feedback",error.message);continue;}
-  state.attachments.push({name:file.name,type:file.type,path}); 
+  const textLike=file.type.startsWith("text/")||/\\.(md|js|ts|py|html|css|json)$/i.test(file.name);\n  const text=textLike?await file.text():"";\n  state.attachments.push({name:file.name,type:file.type||"application/octet-stream",path,text:text.slice(0,100000)}); 
  }
  renderAttachmentList();event.target.value="";
 }
