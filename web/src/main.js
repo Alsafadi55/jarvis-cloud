@@ -7,7 +7,8 @@ const configured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY &&
   !SUPABASE_URL.includes("YOUR_PROJECT") && !SUPABASE_ANON_KEY.includes("YOUR_"));
 const supabase = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-const state = { user: null, conversations: [], activeId: null, busy: false, apiKey: "", models: [], selectedModel: "", providerConnected: false };
+const PROVIDERS=[{id:"gemini",name:"Google Gemini"},{id:"openai",name:"OpenAI"},{id:"anthropic",name:"Anthropic Claude"},{id:"deepseek",name:"DeepSeek"},{id:"xai",name:"xAI"},{id:"openrouter",name:"OpenRouter"},{id:"groq",name:"Groq"},{id:"mistral",name:"Mistral"},{id:"together",name:"Together AI"},{id:"perplexity",name:"Perplexity"}];
+const state={user:null,conversations:[],activeId:null,busy:false,providerKeys:{},models:[],selectedProvider:"gemini",selectedModel:""};
 const app = document.querySelector("#app");
 
 const icon = (name) => ({
@@ -28,21 +29,13 @@ function render() {
     document.querySelector("#signup").addEventListener("click", signUp);
     return;
   }
-  app.innerHTML = `<div class="workspace"><aside class="sidebar"><div class="brand"><div class="brand-mark">${icon("spark")}</div><span>JARVIS<span class="muted"> CLOUD</span></span></div><button class="new-chat" id="new-chat">${icon("plus")} New conversation</button><div class="side-label">YOUR HISTORY</div><div class="history" id="history">${state.conversations.map(c => `<button class="history-item ${c.id===state.activeId?"active":""}" data-id="${c.id}">${escapeHtml(c.title || "New conversation")}</button>`).join("") || '<div class="empty-history">Your conversations will appear here.</div>'}</div><div class="profile"><div class="avatar">${escapeHtml((state.user.email||"J").slice(0,1).toUpperCase())}</div><div class="profile-info"><b>${escapeHtml(state.user.email || "JARVIS user")}</b><span>Connected account</span></div><button class="icon-button" id="logout" aria-label="Sign out">${icon("logout")}</button></div></aside><main class="chat-area"><header class="topbar"><div><span class="online-dot"></span><span>JARVIS SYSTEM</span></div><div class="topbar-actions"><span class="secure-label">PRIVATE SESSION</span><button class="models-toggle" id="open-models" type="button">Models & API <span>↗</span></button></div></header><section class="conversation" id="conversation"><div class="welcome"><div class="welcome-orb">${icon("spark")}</div><div class="eyebrow">YOUR PERSONAL AI</div><h1>What can I help you<br><em>with today?</em></h1><p>Your cloud workspace is connected. Start a conversation with JARVIS.</p><div class="suggestions"><button data-prompt="Help me organize my projects">Organize my projects <span>↗</span></button><button data-prompt="Explain how JARVIS Cloud works">Explain JARVIS Cloud <span>↗</span></button><button data-prompt="Help me plan my next week">Plan my week <span>↗</span></button></div></div></section><div class="composer-wrap"><div id="chat-feedback" class="chat-feedback" role="status"></div><form class="composer" id="chat-form"><textarea id="message" rows="1" placeholder="Message JARVIS..." maxlength="20000" required></textarea><button class="send-button" type="submit" aria-label="Send message">${icon("send")}</button></form><div class="composer-hint">JARVIS can make mistakes. Verify important information.</div></div></main><aside class="models-drawer" id="models-drawer"><div class="drawer-head"><div><div class="eyebrow">MODEL SETTINGS</div><h2>Connect provider</h2></div><button class="icon-button" id="close-models" aria-label="Close">×</button></div><label class="api-label" for="openai-key">OpenAI API key</label><input class="api-key-input" id="openai-key" type="password" autocomplete="off" placeholder="Paste your API key here"><button class="primary connect-button" id="connect-openai" type="button">Connect & load models</button><div class="key-note">Your key stays in this browser tab memory and is sent securely to JARVIS only when needed. It is not saved to the database. Re-enter it after refreshing.</div><div id="provider-feedback" class="feedback" role="status"></div><div class="model-list-head"><span>AVAILABLE MODELS</span><button id="refresh-models" type="button">Refresh</button></div><div id="model-list"><div class="empty-history">Connect your API key to load available models.</div></div><button class="secondary disconnect-button" id="disconnect-openai" type="button">Disconnect OpenAI</button></aside></div>`;
+  app.innerHTML = `<div class="workspace"><aside class="sidebar"><div class="brand"><div class="brand-mark">${icon("spark")}</div><span>JARVIS<span class="muted"> CLOUD</span></span></div><button class="new-chat" id="new-chat">${icon("plus")} New conversation</button><div class="side-label">YOUR HISTORY</div><div class="history" id="history">${state.conversations.map(c => `<button class="history-item ${c.id===state.activeId?"active":""}" data-id="${c.id}">${escapeHtml(c.title || "New conversation")}</button>`).join("") || '<div class="empty-history">Your conversations will appear here.</div>'}</div><div class="profile"><div class="avatar">${escapeHtml((state.user.email||"J").slice(0,1).toUpperCase())}</div><div class="profile-info"><b>${escapeHtml(state.user.email || "JARVIS user")}</b><span>Connected account</span></div><button class="icon-button" id="logout" aria-label="Sign out">${icon("logout")}</button></div></aside><main class="chat-area"><header class="topbar"><div><span class="online-dot"></span><span>JARVIS SYSTEM</span></div><div class="topbar-actions"><span class="secure-label">PRIVATE SESSION</span><button class="models-toggle" id="open-models" type="button">Models & API <span>↗</span></button></div></header><section class="conversation" id="conversation"><div class="welcome"><div class="welcome-orb">${icon("spark")}</div><div class="eyebrow">YOUR PERSONAL AI</div><h1>What can I help you<br><em>with today?</em></h1><p>Your cloud workspace is connected. Start a conversation with JARVIS.</p><div class="suggestions"><button data-prompt="Help me organize my projects">Organize my projects <span>↗</span></button><button data-prompt="Explain how JARVIS Cloud works">Explain JARVIS Cloud <span>↗</span></button><button data-prompt="Help me plan my next week">Plan my week <span>↗</span></button></div></div></section><div class="composer-wrap"><div id="chat-feedback" class="chat-feedback" role="status"></div><form class="composer" id="chat-form"><textarea id="message" rows="1" placeholder="Message JARVIS..." maxlength="20000" required></textarea><button class="send-button" type="submit" aria-label="Send message">${icon("send")}</button></form><div class="composer-hint">JARVIS can make mistakes. Verify important information.</div></div></main><aside class="models-drawer" id="models-drawer"><div class="drawer-head"><div><div class="eyebrow">MODEL SETTINGS</div><h2>API Keys & Models</h2></div><button class="icon-button" id="close-models" aria-label="Close">×</button></div><div class="drawer-section-title">API KEYS <span>Connect your providers</span></div><div id="provider-cards" class="provider-cards"></div><div class="key-note">Keys stay in this browser tab memory only. They are sent to JARVIS over HTTPS when needed, not saved in the database. Re-enter after refreshing. Provider API usage may have separate charges.</div><div id="provider-feedback" class="feedback" role="status"></div><div class="model-list-head"><span>ALL AVAILABLE MODELS</span><button id="refresh-models" type="button">Refresh</button></div><input id="model-search" class="model-search" type="search" placeholder="Search connected models..."><div id="model-list"><div class="empty-history">Connect a provider to load models.</div></div></aside></div>`;
   document.querySelector("#logout").addEventListener("click", signOut);
   document.querySelector("#open-models").addEventListener("click", () => document.querySelector("#models-drawer").classList.add("open"));
   document.querySelector("#close-models").addEventListener("click", () => document.querySelector("#models-drawer").classList.remove("open"));
-  document.querySelector("#connect-openai").addEventListener("click", connectOpenAI);
-  document.querySelector("#refresh-models").addEventListener("click", refreshOpenAIModels);
-  document.querySelector("#disconnect-openai").addEventListener("click", disconnectOpenAI);
-  const modelList = document.querySelector("#model-list");
-  if (modelList) {
-    modelList.innerHTML = state.models.length ? state.models.map(m => '<button class="model-option '+(m.id===state.selectedModel?'selected':'')+'" data-model="'+escapeHtml(m.id)+'"><b>'+escapeHtml(m.id)+'</b><span>'+(m.id===state.selectedModel?'Selected':'OpenAI model')+'</span></button>').join("") : '<div class="empty-history">Connect your API key to load available models.</div>';
-    modelList.querySelectorAll("[data-model]").forEach(b => b.addEventListener("click", () => {
-      state.selectedModel = b.dataset.model;
-      modelList.querySelectorAll(".model-option").forEach(el => { el.classList.toggle("selected", el.dataset.model===state.selectedModel); el.querySelector("span").textContent = el.dataset.model===state.selectedModel ? "Selected" : "OpenAI model"; });
-    }));
-  }
+  renderProviderCards(); renderModelList();
+  document.querySelector("#refresh-models").addEventListener("click", refreshAllModels);
+  document.querySelector("#model-search").addEventListener("input", renderModelList);
 
   document.querySelector("#new-chat").addEventListener("click", newConversation);
   document.querySelector("#chat-form").addEventListener("submit", sendMessage);
@@ -75,7 +68,7 @@ async function signUp() {
   if (!data.session) return feedback("auth-error", "Account created. Check your email to confirm it, then sign in.", "success");
   state.user = data.user; await afterAuth();
 }
-async function signOut() { await supabase.auth.signOut(); state.user = null; state.conversations = []; state.activeId = null; state.apiKey = ""; state.models = []; state.selectedModel = ""; state.providerConnected = false; render(); }
+async function signOut() { await supabase.auth.signOut(); state.user = null; state.conversations = []; state.activeId = null; state.providerKeys = {}; state.models = []; state.selectedProvider = "gemini"; state.selectedModel = ""; render(); }
 async function afterAuth() { await loadConversations(); render(); if (state.activeId) await loadMessages(state.activeId); }
 async function loadConversations() {
   const { data, error } = await supabase.from("conversations").select("id,title,updated_at").order("updated_at", { ascending:false }).limit(50);
@@ -104,26 +97,43 @@ function showWelcome() {
   const area = document.querySelector("#conversation");
   if (area) area.innerHTML = `<div class="welcome compact"><div class="welcome-orb">${icon("spark")}</div><div class="eyebrow">CONVERSATION SELECTED</div><h1>Ready when<br><em>you are.</em></h1><p>Your messages and replies are saved in this conversation.</p></div>`;
 }
-async function connectOpenAI() {
-  const key = document.querySelector("#openai-key").value.trim();
-  if (!key) return feedback("provider-feedback", "Paste your OpenAI API key first.");
-  const btn = document.querySelector("#connect-openai"); btn.disabled = true; btn.textContent = "Checking key...";
-  try {
-    const { data, error } = await supabase.functions.invoke("chat", { body: { action:"models", provider:"openai", api_key:key } });
-    if (error || data?.error) throw new Error(data?.message || data?.error || error?.message || "Could not load models.");
-    state.apiKey = key; state.models = data.models || []; state.selectedModel = state.models[0]?.id || ""; state.providerConnected = true;
-    render(); document.querySelector("#models-drawer").classList.add("open"); feedback("provider-feedback", "Connected. Choose a model from the list.", "success");
-  } catch (err) { feedback("provider-feedback", err.message || "Connection failed."); }
-  finally { const b=document.querySelector("#connect-openai"); if(b){b.disabled=false;b.textContent="Connect & load models";} }
+function renderProviderCards(){
+ const root=document.querySelector("#provider-cards");if(!root)return;
+ root.innerHTML=PROVIDERS.map(p=>{const connected=!!state.providerKeys[p.id];return '<section class="provider-card"><div class="provider-card-top"><b>'+escapeHtml(p.name)+'</b><span class="provider-status '+(connected?'connected':'')+'">'+(connected?'CONNECTED':'NOT CONNECTED')+'</span></div><input class="api-key-input" id="key-'+p.id+'" type="password" autocomplete="off" placeholder="'+(connected?'Key connected · enter new key to replace':'Paste '+p.name+' API key')+'"><div class="provider-actions"><button class="primary" data-connect="'+p.id+'" type="button">'+(connected?'Replace / Test':'Connect & load models')+'</button>'+(connected?'<button class="secondary" data-disconnect="'+p.id+'" type="button">Disconnect</button>':'')+'</div></section>';}).join("");
+ root.querySelectorAll("[data-connect]").forEach(b=>b.addEventListener("click",()=>connectProvider(b.dataset.connect)));
+ root.querySelectorAll("[data-disconnect]").forEach(b=>b.addEventListener("click",()=>disconnectProvider(b.dataset.disconnect)));
 }
-async function refreshOpenAIModels() {
-  if (!state.apiKey) return feedback("provider-feedback", "Connect your API key first.");
-  const { data, error } = await supabase.functions.invoke("chat", { body: { action:"models", provider:"openai", api_key:state.apiKey } });
-  if (error || data?.error) return feedback("provider-feedback", data?.message || error?.message || "Could not refresh models.");
-  state.models = data.models || []; if (!state.models.some(m=>m.id===state.selectedModel)) state.selectedModel=state.models[0]?.id || "";
-  render(); document.querySelector("#models-drawer").classList.add("open");
+function renderModelList(){
+ const root=document.querySelector("#model-list");if(!root)return;
+ const q=(document.querySelector("#model-search")?.value||"").toLowerCase();
+ const list=state.models.filter(m=>(m.id+" "+m.providerName).toLowerCase().includes(q));
+ root.innerHTML=list.length?list.map(m=>{const active=m.provider===state.selectedProvider&&m.id===state.selectedModel;return '<button class="model-option '+(active?'selected':'')+'" data-provider="'+m.provider+'" data-model="'+escapeHtml(m.id)+'"><b>'+escapeHtml(m.id)+'</b><span>'+escapeHtml(m.providerName)+(active?' · Selected':'')+'</span></button>';}).join(""):'<div class="empty-history">'+(state.models.length?'No matching models.':'Connect providers to aggregate their models here.')+'</div>';
+ root.querySelectorAll("[data-model]").forEach(b=>b.addEventListener("click",()=>{state.selectedProvider=b.dataset.provider;state.selectedModel=b.dataset.model;renderModelList();feedback("provider-feedback","Selected "+b.dataset.model,"success");}));
 }
-function disconnectOpenAI() { state.apiKey=""; state.models=[]; state.selectedModel=""; state.providerConnected=false; render(); }
+async function connectProvider(provider){
+ const input=document.querySelector("#key-"+provider),key=input?.value.trim();if(!key)return feedback("provider-feedback","Paste the API key first.");
+ const btn=document.querySelector('[data-connect="'+provider+'"]');if(btn){btn.disabled=true;btn.textContent="Checking key...";}
+ try{
+  const result=await supabase.functions.invoke("chat",{body:{action:"models",provider:provider,api_key:key}});
+  if(result.error||result.data?.error)throw new Error(result.data?.message||result.error?.message||"Could not verify key.");
+  state.providerKeys[provider]=key;
+  state.models=state.models.filter(m=>m.provider!==provider).concat((result.data.models||[]).map(m=>({provider:provider,providerName:PROVIDERS.find(p=>p.id===provider).name,id:m.id})));
+  state.models.sort((x,y)=>x.providerName.localeCompare(y.providerName)||x.id.localeCompare(y.id));
+  state.selectedProvider=provider;state.selectedModel=state.models.find(m=>m.provider===provider)?.id||"";
+  render();document.querySelector("#models-drawer")?.classList.add("open");
+  feedback("provider-feedback","Connected "+PROVIDERS.find(p=>p.id===provider).name+". Loaded "+(result.data.models||[]).length+" models.","success");
+ }catch(err){feedback("provider-feedback",err.message||"Connection failed.");}
+}
+async function refreshAllModels(){
+ const pairs=Object.entries(state.providerKeys);if(!pairs.length)return feedback("provider-feedback","Connect a provider first.");
+ for(const pair of pairs){const provider=pair[0],key=pair[1];const result=await supabase.functions.invoke("chat",{body:{action:"models",provider:provider,api_key:key}});if(!result.error&&!result.data?.error)state.models=state.models.filter(m=>m.provider!==provider).concat((result.data.models||[]).map(m=>({provider:provider,providerName:PROVIDERS.find(p=>p.id===provider).name,id:m.id})));else feedback("provider-feedback","Could not refresh "+provider+".");}
+ renderModelList();feedback("provider-feedback","Model list refreshed.","success");
+}
+function disconnectProvider(provider){
+ delete state.providerKeys[provider];state.models=state.models.filter(m=>m.provider!==provider);
+ if(state.selectedProvider===provider){state.selectedProvider="gemini";state.selectedModel="";}
+ renderProviderCards();renderModelList();feedback("provider-feedback","Disconnected "+provider+".","success");
+}
 async function sendMessage(e) {
   e.preventDefault();
   const input = document.querySelector("#message");
@@ -136,7 +146,7 @@ async function sendMessage(e) {
   area.innerHTML = `<div class="message user-message">${escapeHtml(message)}</div><div class="message assistant-message"><div class="typing"><i></i><i></i><i></i></div></div>`;
   input.value = "";
   try {
-    const { data, error } = await supabase.functions.invoke("chat", { body: { message, conversation_id:state.activeId, provider:state.apiKey ? "openai" : "gemini", api_key:state.apiKey || undefined, model:state.selectedModel || undefined } });
+    const { data, error } = await supabase.functions.invoke("chat", { body: { message, conversation_id:state.activeId, provider:state.selectedProvider, api_key:state.providerKeys[state.selectedProvider] || undefined, model:state.selectedModel || undefined } });
     state.busy = false;
     if (error || data?.error) {
       const detail = data?.message || data?.error || error?.message || "Request failed.";
