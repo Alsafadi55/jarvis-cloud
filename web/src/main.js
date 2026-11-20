@@ -37,7 +37,12 @@ function render() {
   document.querySelector("#refresh-models").addEventListener("click", refreshAllModels);
   document.querySelector("#model-search").addEventListener("input", renderModelList);
 
-  document.querySelector("#new-chat").addEventListener("click", newConversation);\n  document.querySelector("#nav-chat").addEventListener("click",()=>showWorkspaceView("chat"));\n  document.querySelector("#nav-plugins").addEventListener("click",()=>showWorkspaceView("plugins"));\n  document.querySelector("#nav-skills").addEventListener("click",()=>showWorkspaceView("skills"));\n  document.querySelector("#attach-files").addEventListener("click",()=>document.querySelector("#chat-files").click());\n  document.querySelector("#chat-files").addEventListener("change",handleChatFiles);
+  document.querySelector("#new-chat").addEventListener("click", newConversation);
+  document.querySelector("#nav-chat").addEventListener("click",()=>showWorkspaceView("chat"));
+  document.querySelector("#nav-plugins").addEventListener("click",()=>showWorkspaceView("plugins"));
+  document.querySelector("#nav-skills").addEventListener("click",()=>showWorkspaceView("skills"));
+  document.querySelector("#attach-files").addEventListener("click",()=>document.querySelector("#chat-files").click());
+  document.querySelector("#chat-files").addEventListener("change",handleChatFiles);
   document.querySelector("#chat-form").addEventListener("submit", sendMessage);
   const messageBox = document.querySelector("#message");
   messageBox.addEventListener("keydown", (event) => {
