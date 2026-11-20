@@ -39,6 +39,17 @@ function render() {
 
   document.querySelector("#new-chat").addEventListener("click", newConversation);
   document.querySelector("#chat-form").addEventListener("submit", sendMessage);
+  const messageBox = document.querySelector("#message");
+  messageBox.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      document.querySelector("#chat-form").requestSubmit();
+    }
+  });
+  messageBox.addEventListener("input", () => {
+    messageBox.style.height = "auto";
+    messageBox.style.height = Math.min(messageBox.scrollHeight, 180) + "px";
+  });
   document.querySelectorAll("[data-prompt]").forEach(b => b.addEventListener("click", () => { document.querySelector("#message").value = b.dataset.prompt; document.querySelector("#message").focus(); }));
   document.querySelectorAll("[data-id]").forEach(b => b.addEventListener("click", () => selectConversation(b.dataset.id)));
   if (state.activeId) loadMessages(state.activeId);
@@ -150,6 +161,12 @@ async function sendMessage(e) {
   if (!message || state.busy) return;
   if (!state.activeId) await newConversation();
   if (!state.activeId) return;
+  const currentInput = document.querySelector("#message");
+  if (currentInput) currentInput.value = "";
+  if (!state.selectedModel) {
+    feedback("chat-feedback", "Open Models & API, connect a provider, and select a model before sending.");
+    return;
+  }
   state.busy = true;
   const area = document.querySelector("#conversation");
   area.innerHTML = `<div class="message user-message">${escapeHtml(message)}</div><div class="message assistant-message"><div class="typing"><i></i><i></i><i></i></div></div>`;
