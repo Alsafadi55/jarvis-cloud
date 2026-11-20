@@ -190,7 +190,7 @@ Deno.serve(async (req: Request) => {
         const chunks=result.candidates?.[0]?.groundingMetadata?.groundingChunks??[];
         const sources=chunks.map((chunk:any)=>chunk.web).filter((web:any)=>web&&typeof web.uri==="string")
           .slice(0,6).map((web:any,index:number)=>"["+(index+1)+"] "+String(web.title??"Source")+" — "+web.uri);
-        if(sources.length)reply+="\\n\\nSources:\\n"+sources.join("\\n");
+        if(sources.length)reply+="\n\nSources:\n"+sources.join("\n");
       }
     }else{
       response=await fetch(cfg.base+"/chat/completions",{
