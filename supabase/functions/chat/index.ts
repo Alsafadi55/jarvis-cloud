@@ -193,7 +193,8 @@ Deno.serve(async (req: Request) => {
           model,
           messages:[
             {role:"system",content:"You are JARVIS, a helpful, clear, respectful personal AI assistant. Be honest about limitations and never claim an action was completed unless it was."},
-            ...ordered.slice(0,-1).map(m=>({role:m.role==="assistant"?"assistant":"user",content:m.content})),\n            {role:"user",content:[{type:"text",text:userPrompt},...imageAttachments.map(a=>({type:"image_url",image_url:{url:"data:"+a.type+";base64,"+a.data}}))]},
+            ...ordered.slice(0,-1).map(m=>({role:m.role==="assistant"?"assistant":"user",content:m.content})),
+            {role:"user",content:[{type:"text",text:userPrompt},...imageAttachments.map(a=>({type:"image_url",image_url:{url:"data:"+a.type+";base64,"+a.data}}))]},
           ],
           max_tokens:2048,
         }),
