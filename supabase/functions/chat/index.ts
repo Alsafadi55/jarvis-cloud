@@ -24,12 +24,10 @@ Deno.serve(async (req: Request) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-  if (!supabaseUrl || !anonKey) {
-    console.error("Supabase environment is missing required configuration.");
-    return json({ error: "server_misconfigured" }, 500);
-  }
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  if (!supabaseUrl || !anonKey) return json({ error: "server_misconfigured" }, 500);
+  if (!geminiKey) return json({ error: "provider_not_configured", message: "Gemini is not configured on the server." }, 503);
 
-  // This client carries the caller's JWT so every query remains subject to RLS.
   const supabase = createClient(supabaseUrl, anonKey, {
     global: { headers: { Authorization: `Bearer ${token}` } },
     auth: { persistSession: false, autoRefreshToken: false },
@@ -40,40 +38,90 @@ Deno.serve(async (req: Request) => {
   const userId = authData.user.id;
 
   let body: { message?: unknown; conversation_id?: unknown };
+  try { body = await req.json(); } catch { return json({ error: "invalid_json" }, 400); }
+
+  if (typeof body.message !== "string" || !body.message.trim()) return json({ error: "message_required" }, 400);
+  const message = body.message.trim();
+  if (message.length > 20000) return json({ error: "message_too_long" }, 413);
+  if (typeof body.conversation_id !== "string") return json({ error: "conversation_id_required" }, 400);
+
+  const { data: conversation, error: conversationError } = await supabase
+    .from("conversations").select("id").eq("id", body.conversation_id).eq("user_id", userId).maybeSingle();
+  if (conversationError) {
+    console.error("Conversation lookup failed:", conversationError.message);
+    return json({ error: "conversation_lookup_failed" }, 500);
+  }
+  if (!conversation) return json({ error: "conversation_not_found" }, 404);
+
+  const { error: insertUserError } = await supabase.from("messages").insert({
+    conversation_id: conversation.id, user_id: userId, role: "user", content: message,
+  });
+  if (insertUserError) {
+    console.error("User message save failed:", insertUserError.message);
+    return json({ error: "message_save_failed" }, 500);
+  }
+
+  const { data: history, error: historyError } = await supabase
+    .from("messages").select("role,content").eq("conversation_id", conversation.id)
+    .eq("user_id", userId).in("role", ["user", "assistant"])
+    .order("created_at", { ascending: false }).limit(20);
+  if (historyError) {
+    console.error("History load failed:", historyError.message);
+    return json({ error: "history_load_failed" }, 500);
+  }
+
+  const contents = (history ?? []).reverse().map((item) => ({
+    role: item.role === "assistant" ? "model" : "user",
+    parts: [{ text: item.content }],
+  }));
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+  let providerResponse: Response;
   try {
-    body = await req.json();
-  } catch {
-    return json({ error: "invalid_json" }, 400);
+    providerResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: "You are JARVIS, a helpful, clear, respectful personal AI assistant. Be honest about limitations. Do not claim to have performed actions unless they were actually completed." }] },
+        contents,
+        generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+      }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    clearTimeout(timeout);
+    console.error("Gemini request failed:", error instanceof Error ? error.name : "unknown");
+    return json({ error: "provider_unavailable", message: "Gemini could not be reached. Please try again." }, 502);
+  }
+  clearTimeout(timeout);
+
+  const providerData = await providerResponse.json().catch(() => ({}));
+  if (!providerResponse.ok) {
+    console.error("Gemini returned HTTP", providerResponse.status, providerData?.error?.status ?? "unknown");
+    const status = providerResponse.status === 429 ? 429 : 502;
+    return json({
+      error: providerResponse.status === 429 ? "provider_rate_limited" : "provider_error",
+      message: providerResponse.status === 429
+        ? "Gemini is temporarily rate-limited. Please wait a moment and try again."
+        : "Gemini returned an error. Check the API key and model access in Google AI Studio.",
+    }, status);
   }
 
-  if (typeof body.message !== "string" || body.message.trim().length === 0) {
-    return json({ error: "message_required" }, 400);
-  }
-  if (body.message.length > 20000) return json({ error: "message_too_long" }, 413);
+  const reply = (providerData?.candidates?.[0]?.content?.parts ?? [])
+    .map((part: { text?: string }) => part.text ?? "").join("").trim();
+  if (!reply) return json({ error: "empty_provider_response", message: "Gemini returned an empty response. Please try again." }, 502);
 
-  if (body.conversation_id !== undefined) {
-    if (typeof body.conversation_id !== "string") {
-      return json({ error: "invalid_conversation_id" }, 400);
-    }
-    const { data: conversation, error } = await supabase
-      .from("conversations")
-      .select("id")
-      .eq("id", body.conversation_id)
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (error) {
-      console.error("Conversation lookup failed:", error.message);
-      return json({ error: "conversation_lookup_failed" }, 500);
-    }
-    if (!conversation) return json({ error: "conversation_not_found" }, 404);
+  const { error: saveAssistantError } = await supabase.from("messages").insert({
+    conversation_id: conversation.id, user_id: userId, role: "assistant", content: reply,
+  });
+  if (saveAssistantError) {
+    console.error("Assistant message save failed:", saveAssistantError.message);
+    return json({ error: "assistant_save_failed", message: reply, conversation_id: conversation.id }, 500);
   }
 
-  // Provider routing and message persistence are intentionally disabled until
-  // server-side provider credentials and the provider adapter are configured.
-  return json({
-    error: "provider_not_configured",
-    message: "Authentication and request validation succeeded. Configure an AI provider to enable chat.",
-    conversation_id: body.conversation_id ?? null,
-  }, 503);
+  await supabase.from("conversations").update({ updated_at: new Date().toISOString() })
+    .eq("id", conversation.id).eq("user_id", userId);
+
+  return json({ message: reply, conversation_id: conversation.id });
 });
