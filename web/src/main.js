@@ -108,6 +108,14 @@ async function afterAuth() {
   await Promise.all([loadConversations(),loadSkills(),loadPlugins(),loadProjects()]);
   await loadServerGemini();
   await refreshRestoredModels();
+  try {
+    const saved=JSON.parse(localStorage.getItem("jarvis-model:"+state.user.id)||"null");
+    if(saved&&state.models.some(m=>m.provider===saved.provider&&m.id===saved.model)){
+      state.selectedProvider=saved.provider;state.selectedModel=saved.model;
+    } else if(!state.selectedModel&&state.models.length){
+      state.selectedProvider=state.models[0].provider;state.selectedModel=state.models[0].id;
+    }
+  } catch {}
   render();
   await showWorkspaceView("dashboard");
 }
@@ -171,7 +179,7 @@ function renderModelList(){
  const q=(document.querySelector("#model-search")?.value||"").toLowerCase();
  const list=state.models.filter(m=>(m.id+" "+m.providerName).toLowerCase().includes(q));
  root.innerHTML=list.length?list.map(m=>{const active=m.provider===state.selectedProvider&&m.id===state.selectedModel;return '<button class="model-option '+(active?'selected':'')+'" data-provider="'+m.provider+'" data-model="'+escapeHtml(m.id)+'"><b>'+escapeHtml(m.id)+'</b><span>'+escapeHtml(m.providerName)+(active?' · Selected':'')+'</span></button>';}).join(""):'<div class="empty-history">'+(state.models.length?'No matching models.':'Connect providers to aggregate their models here.')+'</div>';
- root.querySelectorAll("[data-model]").forEach(b=>b.addEventListener("click",()=>{state.selectedProvider=b.dataset.provider;state.selectedModel=b.dataset.model;renderModelList();feedback("provider-feedback","Selected "+b.dataset.model,"success");}));
+ root.querySelectorAll("[data-model]").forEach(b=>b.addEventListener("click",()=>{state.selectedProvider=b.dataset.provider;state.selectedModel=b.dataset.model;try{localStorage.setItem("jarvis-model:"+state.user.id,JSON.stringify({provider:state.selectedProvider,model:state.selectedModel}));}catch{}renderModelList();feedback("provider-feedback","Selected "+b.dataset.model,"success");}));
 }
 async function connectProvider(provider){
  const input=document.querySelector("#key-"+provider),key=input?.value.trim();if(!key)return feedback("provider-feedback","Paste the API key first.");
