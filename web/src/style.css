@@ -300,3 +300,12 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .workspace-page .activity-row span{display:grid;gap:4px}
 @media(max-width:1000px){.workspace-page .dashboard-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.chat-area.workspace-mode .conversation{padding:24px 16px}.workspace-page .dashboard-columns{grid-template-columns:1fr}.workspace-page .inline-fields{grid-template-columns:1fr}.workspace-page .dashboard-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+.composer-tools{display:flex;align-items:center;gap:12px;margin:0 auto 10px;width:min(100%,820px)}
+.agent-toggle{display:inline-flex;align-items:center;gap:10px;border:1px solid #343a45;background:#121720;color:#c8ced9;border-radius:999px;padding:8px 13px;font-size:11px;font-weight:700;letter-spacing:.04em;transition:all .2s ease}
+.agent-toggle span{color:#858b9b;font:10px 'DM Mono',monospace}
+.agent-toggle.active{border-color:#718c4c;background:#172219;color:#e4f7c4;box-shadow:0 0 24px #a5d76c18}
+.agent-toggle.active span{color:#d5fb68}
+.agent-hint{color:var(--muted);font-size:11px}
+@media(max-width:640px){.composer-tools{padding:0 4px}.agent-hint{font-size:10px}}
