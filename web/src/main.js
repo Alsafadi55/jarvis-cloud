@@ -174,7 +174,7 @@ async function afterAuth() {
   await showWorkspaceView("dashboard");
 }
 async function refreshRestoredModels() {
-  const entries = Object.entries(state.providerKeys).filter(([id,key]) => id !== "gemini" || key !== "__SERVER_GEMINI__");
+  const entries = Object.entries(state.providerKeys).filter(([id,key]) => PROVIDERS.some(p=>p.id===id) && (id !== "gemini" || key !== "__SERVER_GEMINI__"));
   for (const [provider,key] of entries) {
     try {
       const result = await supabase.functions.invoke("chat",{body:{action:"models",provider,api_key:key}});
@@ -306,6 +306,7 @@ async function sendMessage(e) {
       api_key:state.providerKeys[state.selectedProvider]&&state.providerKeys[state.selectedProvider]!=="__SERVER_GEMINI__"?state.providerKeys[state.selectedProvider]:undefined,
       model:state.selectedModel,
       agent_mode:state.agentMode,
+      github_token:state.providerKeys["plugin-github"]||"",
       plugins:state.plugins.filter(x=>x.enabled).map(x=>x.plugin_id),
       attachments:sentFiles.map(x=>({name:x.name,type:x.type,path:x.path,text:x.text||""}))
     }});
@@ -372,9 +373,46 @@ async function uploadSkillFiles(files){
  await loadSkills();renderSkillsPage(area);
 }
 function renderPluginsPage(area){
- area.innerHTML=`<div class="library-page"><div class="eyebrow">EXTEND YOUR ASSISTANT</div><h1>Plugin <em>Store</em></h1><p class="library-intro">Enable real integrations for JARVIS. Web Search uses Gemini's built-in Google Search grounding; select a Gemini model in Models & API to use it.</p><div class="library-grid">${PLUGIN_CATALOG.map(p=>{const active=!!state.plugins.find(x=>x.plugin_id===p.id)?.enabled;const available=p.id==="web-search";return `<article class="library-card"><div class="library-card-top"><span class="plugin-category">${p.category}</span><span class="coming-soon">${available?(active?"ENABLED":"AVAILABLE"):p.status.toUpperCase()}</span></div><h3>${p.name}</h3><p>${p.description}</p><button class="plugin-toggle" data-plugin="${p.id}" ${available?"":"disabled"}>${available?(active?"Disable Web Search":"Enable Web Search"):"Coming soon"}</button></article>`;}).join("")}</div></div>`;
+ area.innerHTML=\`<div class="library-page"><div class="eyebrow">EXTEND YOUR ASSISTANT</div><h1>Plugin <em>Store</em></h1><p class="library-intro">Connect real services to JARVIS. Web Search uses Gemini's built-in Google Search grounding. GitHub connects with a token saved encrypted in this browser.</p><div class="library-grid">\${PLUGIN_CATALOG.map(p=>{
+   const active=p.id==="github"?!!state.providerKeys["plugin-github"]:!!state.plugins.find(x=>x.plugin_id===p.id)?.enabled;
+   const available=p.id==="web-search"||p.id==="github";
+   const githubControls=p.id==="github"?\`<div class="github-connect"><label for="github-token">GitHub token</label><input id="github-token" type="password" autocomplete="off" placeholder="\${active?"Connected — paste a replacement token":"Paste a fine-grained token"}"><small>Required permissions: repository metadata read, contents read, issues read/write. The token is encrypted in this browser and sent only to JARVIS's secure function when needed.</small><button class="plugin-toggle" id="github-connect">\${active?"Replace token":"Connect GitHub"}</button>\${active?'<button class="delete-skill" id="github-disconnect">Disconnect</button>':""}<div id="github-feedback" class="feedback"></div></div>\`: \`<button class="plugin-toggle" data-plugin="\${p.id}" \${available?"":"disabled"}>\${available?(active?"Disable Web Search":"Enable Web Search"):"Coming soon"}</button>\`;
+   return \`<article class="library-card"><div class="library-card-top"><span class="plugin-category">\${p.category}</span><span class="coming-soon">\${available?(active?"CONNECTED":"AVAILABLE"):p.status.toUpperCase()}</span></div><h3>\${p.name}</h3><p>\${p.description}</p>\${githubControls}</article>\`;
+ }).join("")}</div></div>\`;
  area.querySelectorAll('[data-plugin="web-search"]').forEach(b=>b.addEventListener("click",()=>togglePlugin("web-search")));
+ area.querySelector("#github-connect")?.addEventListener("click",connectGithubPlugin);
+ area.querySelector("#github-disconnect")?.addEventListener("click",disconnectGithubPlugin);
 }
+async function connectGithubPlugin(){
+ const input=document.querySelector("#github-token");
+ const feedbackArea=document.querySelector("#github-feedback");
+ const token=input?.value.trim()||"";
+ if(token.length<20){if(feedbackArea)feedbackArea.textContent="Paste a valid GitHub token first.";return;}
+ const result=await supabase.functions.invoke("chat",{body:{action:"github_check",github_token:token}});
+ if(result.error||result.data?.error){if(feedbackArea)feedbackArea.textContent=result.data?.message||result.error?.message||"GitHub connection failed.";return;}
+ try{await saveProviderKey(state.user.id,"plugin-github",token);}
+ catch(error){if(feedbackArea)feedbackArea.textContent="Encrypted local storage is unavailable in this browser.";return;}
+ state.providerKeys["plugin-github"]=token;
+ const existing=state.plugins.find(p=>p.plugin_id==="github");
+ const payload={enabled:true,settings:{account:result.data.github.login,display_name:result.data.github.name||result.data.github.login}};
+ const saved=existing
+   ? await supabase.from("user_plugins").update(payload).eq("id",existing.id).eq("user_id",state.user.id)
+   : await supabase.from("user_plugins").insert({user_id:state.user.id,plugin_id:"github",...payload});
+ if(saved.error){if(feedbackArea)feedbackArea.textContent="Token verified, but plugin status could not be saved.";return;}
+ await loadPlugins();
+ await logActivity("plugin_connected","Connected GitHub account: "+result.data.github.login);
+ await showWorkspaceView("plugins");
+}
+async function disconnectGithubPlugin(){
+ await deleteProviderKey(state.user.id,"plugin-github");
+ delete state.providerKeys["plugin-github"];
+ const existing=state.plugins.find(p=>p.plugin_id==="github");
+ if(existing)await supabase.from("user_plugins").update({enabled:false}).eq("id",existing.id).eq("user_id",state.user.id);
+ await loadPlugins();
+ await logActivity("plugin_disconnected","Disconnected GitHub");
+ await showWorkspaceView("plugins");
+}
+
 async function togglePlugin(pluginId){
  const current=state.plugins.find(x=>x.plugin_id===pluginId);
  const enabled=!current?.enabled;
