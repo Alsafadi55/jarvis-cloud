@@ -356,3 +356,11 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 
 .copy-message{display:block;margin:10px 0 0 auto;border:1px solid #2b313d;border-radius:7px;background:#111720;color:#9ba5b6;padding:5px 9px;font-size:10px;opacity:.65}
 .copy-message:hover{opacity:1;color:#d5fb68;border-color:#647a42}
+
+
+.github-connect{display:grid;gap:8px;margin-top:14px}
+.github-connect label{font-size:11px;color:#c5cbd6}
+.github-connect input{width:100%;min-width:0;border:1px solid var(--line);border-radius:10px;background:#0b0e15;color:#eef0f5;padding:11px 12px;font-size:12px}
+.github-connect small{font-size:10px;line-height:1.5;color:var(--muted)}
+.github-connect .delete-skill{justify-self:start}
+:root[data-theme="light"] .github-connect input{background:#fff;color:#171b22;border-color:#dfe3e9}
