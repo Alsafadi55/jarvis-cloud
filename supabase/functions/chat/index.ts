@@ -161,15 +161,23 @@ Deno.serve(async (req: Request) => {
   if(authError||!authData.user)return json({error:"unauthorized"},401);
   const userId=authData.user.id;
 
-  let body:{action?:unknown;provider?:unknown;api_key?:unknown;model?:unknown;message?:unknown;conversation_id?:unknown;attachments?:unknown;plugins?:unknown;agent_mode?:unknown};
+  let body:{action?:unknown;provider?:unknown;api_key?:unknown;model?:unknown;message?:unknown;conversation_id?:unknown;attachments?:unknown;plugins?:unknown;agent_mode?:unknown;github_token?:unknown};
   try{body=await req.json();}catch{return json({error:"invalid_json"},400);}
   const provider=typeof body.provider==="string"?body.provider:"gemini";
   const agentMode=body.agent_mode===true;
+  const githubToken=typeof body.github_token==="string"?body.github_token.trim():"";
   const cfg=providers[provider];
   if(!cfg)return json({error:"unsupported_provider",message:"This provider is not supported."},400);
   const suppliedKey=typeof body.api_key==="string"?body.api_key.trim():"";
   const key=suppliedKey||(provider==="gemini"?serverGeminiKey:"");
 
+  if(body.action==="github_check"){
+    if(githubToken.length<20)return json({error:"github_token_required",message:"Enter a valid GitHub token."},400);
+    const check=await fetch("https://api.github.com/user",{headers:{Authorization:"Bearer "+githubToken,Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","User-Agent":"JARVIS-Cloud"}});
+    const account=await check.json().catch(()=>({}));
+    if(!check.ok)return json({error:"github_token_invalid",message:"GitHub rejected this token. Check it and its repository permissions."},400);
+    return json({github:{login:account.login,name:account.name??account.login}});
+  }
   if(body.action==="models"){
     if(key.length<8)return json({error:"api_key_required",message:"Enter an API key for this provider."},400);
     try{return json({models:await getModels(provider,key)});}
