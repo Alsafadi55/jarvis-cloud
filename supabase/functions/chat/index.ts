@@ -61,6 +61,10 @@ const agentToolDefinitions = [
   {type:"function",function:{name:"list_tasks",description:"List the user's JARVIS tasks, optionally filtered by status.",parameters:{type:"object",properties:{status:{type:"string",enum:["pending","in_progress","completed","cancelled"]}},additionalProperties:false}}},
   {type:"function",function:{name:"update_task_status",description:"Change the status of one of the user's existing tasks.",parameters:{type:"object",properties:{id:{type:"string"},status:{type:"string",enum:["pending","in_progress","completed","cancelled"]}},required:["id","status"],additionalProperties:false}}},
   {type:"function",function:{name:"save_memory",description:"Save a memory only when the user explicitly asks JARVIS to remember or save the information.",parameters:{type:"object",properties:{memory_type:{type:"string",enum:["general","preference","project","instruction"]},content:{type:"string"}},required:["content"],additionalProperties:false}}},
+
+  {type:"function",function:{name:"list_files",description:"List files in the user's private JARVIS workspace.",parameters:{type:"object",properties:{},additionalProperties:false}}},
+  {type:"function",function:{name:"read_text_file",description:"Read a text or code file from the user's own JARVIS workspace. Only read files the user asks about.",parameters:{type:"object",properties:{path:{type:"string"}},required:["path"],additionalProperties:false}}},
+  {type:"function",function:{name:"create_text_file",description:"Create a text, Markdown, JSON, CSV, or code file in the user's private JARVIS workspace when requested.",parameters:{type:"object",properties:{filename:{type:"string"},content:{type:"string"}},required:["filename","content"],additionalProperties:false}}},
   {type:"function",function:{name:"search_memories",description:"Search the user's own saved memories for matching information.",parameters:{type:"object",properties:{query:{type:"string"}},required:["query"],additionalProperties:false}}},
 ];
 async function runAgentTool(supabase:any,userId:string,name:string,args:any){
@@ -101,6 +105,31 @@ async function runAgentTool(supabase:any,userId:string,name:string,args:any){
     if(term.length<2)return {ok:false,error:"Enter at least two characters to search memories."};
     const {data,error}=await supabase.from("memories").select("id,memory_type,content,is_active").eq("user_id",userId).ilike("content","%"+term+"%").limit(10);
     return error?{ok:false,error:"Could not search memories."}:{ok:true,memories:data??[]};
+  }
+  if(name==="list_files"){
+    const {data,error}=await supabase.storage.from("jarvis-user-files").list(userId+"/chat",{limit:50,sortBy:{column:"created_at",order:"desc"}});
+    return error?{ok:false,error:"Could not list files."}:{ok:true,files:(data??[]).filter((f:any)=>f.name).map((f:any)=>({name:f.name,size:f.metadata?.size??null,type:f.metadata?.mimetype??"file",path:userId+"/chat/"+f.name}))};
+  }
+  if(name==="read_text_file"){
+    const path=typeof args.path==="string"?args.path:"";
+    if(!path.startsWith(userId+"/chat/")&&!path.startsWith(userId+"/skills/"))return {ok:false,error:"That file is outside your private workspace."};
+    const {data:file,error}=await supabase.storage.from("jarvis-user-files").download(path);
+    if(error||!file)return {ok:false,error:"File not found or inaccessible."};
+    if(file.size>200*1024)return {ok:false,error:"File is too large to read through Agent Mode."};
+    const allowedExt=/\.(md|txt|json|csv|js|ts|py|html|css|xml|yaml|yml)$/i.test(path);
+    if(!allowedExt&&!file.type.startsWith("text/")&&file.type!=="application/json")return {ok:false,error:"Only text and code files can be read by this tool."};
+    return {ok:true,path,content:(await file.text()).slice(0,40000)};
+  }
+  if(name==="create_text_file"){
+    const filename=typeof args.filename==="string"?args.filename.trim().replace(/[^a-zA-Z0-9._-]/g,"_").slice(0,100):"";
+    const content=typeof args.content==="string"?args.content:"";
+    if(!filename||! /\.(md|txt|json|csv|js|ts|py|html|css)$/i.test(filename))return {ok:false,error:"Use a supported text or code filename extension."};
+    if(content.length>100000)return {ok:false,error:"The file content exceeds the 100 KB limit."};
+    const path=userId+"/chat/"+crypto.randomUUID()+"-"+filename;
+    const {error}=await supabase.storage.from("jarvis-user-files").upload(path,new Blob([content],{type:"text/plain;charset=utf-8"}),{contentType:"text/plain",upsert:false});
+    if(error)return {ok:false,error:"Could not create the file in your workspace."};
+    await supabase.from("activity_events").insert({user_id:userId,event_type:"file_created",title:"Created file: "+filename,details:"Created by JARVIS agent mode."});
+    return {ok:true,file:{name:filename,path,size:content.length}};
   }
   return {ok:false,error:"This tool is not available."};
 }
@@ -165,7 +194,10 @@ Deno.serve(async (req: Request) => {
   const {error:userSaveError}=await supabase.from("messages").insert({
     conversation_id:conversation.id,user_id:userId,role:"user",content:message,
   });
-  if(userSaveError)return json({error:"message_save_failed"},500);
+  if(userSaveError){
+    if(agentRunId)await supabase.from("agent_runs").update({status:"failed",error:"Could not save user message",actions:agentActions,completed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",agentRunId).eq("user_id",userId);
+    return json({error:"message_save_failed"},500);
+  }
   const {data:history,error:historyError}=await supabase.from("messages")
     .select("role,content").eq("conversation_id",conversation.id).eq("user_id",userId)
     .in("role",["user","assistant"]).order("created_at",{ascending:false}).limit(20);
@@ -327,7 +359,6 @@ Deno.serve(async (req: Request) => {
         ...ordered.slice(0,-1).map(m=>({role:m.role==="assistant"?"assistant":"user",content:m.content})),
         {role:"user",content:[{type:"text",text:userPrompt},...imageAttachments.map(a=>({type:"image_url",image_url:{url:"data:"+a.type+";base64,"+a.data}}))]},
       ];
-      const completedActions:string[]=[];
       let toolCalls=0;
       for(let step=0;step<(agentMode?5:1);step++){
         response=await fetch(cfg.base+"/chat/completions",{
@@ -349,7 +380,6 @@ Deno.serve(async (req: Request) => {
             const toolName=String(call.function?.name??"");
             const toolResult=await runAgentTool(supabase,userId,toolName,args);
             agentActions.push({tool:toolName,ok:!!toolResult.ok});
-            if(toolResult.ok)completedActions.push(toolName+" completed");
             messages.push({role:"tool",tool_call_id:call.id,content:JSON.stringify(toolResult)});
           }
           continue;
@@ -376,7 +406,7 @@ Deno.serve(async (req: Request) => {
     return json({error:"provider_unavailable",message:failureMessage},502);
   }
   clearTimeout(timeout);
-  if(!reply){if(agentRunId)await supabase.from("agent_runs").update({status:"failed",error:"Empty provider response",actions:agentActions,completed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",agentRunId).eq("user_id",userId);return json({error:"empty_provider_response",message:"The provider returned an empty response."},502);}
+  if(agentMode&&agentActions.some(action=>action.ok))reply+=(reply?"\n\n":"")+"Workspace actions: "+agentActions.filter(action=>action.ok).map(action=>action.tool.replace(/_/g," ")+" completed").join("; ")+".\n  if(!reply){if(agentRunId)await supabase.from("agent_runs").update({status:"failed",error:"Empty provider response",actions:agentActions,completed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",agentRunId).eq("user_id",userId);return json({error:"empty_provider_response",message:"The provider returned an empty response."},502);}
 
   const {error:assistantSaveError}=await supabase.from("messages").insert({
     conversation_id:conversation.id,user_id:userId,role:"assistant",content:reply,
