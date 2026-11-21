@@ -309,3 +309,13 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .agent-toggle.active span{color:#d5fb68}
 .agent-hint{color:var(--muted);font-size:11px}
 @media(max-width:640px){.composer-tools{padding:0 4px}.agent-hint{font-size:10px}}
+
+
+.agent-run-row{cursor:pointer}
+.agent-run-row>span:first-child{display:grid;gap:5px;min-width:0}
+.agent-run-row>span:first-child>b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.agent-run-row>span:first-child>small{color:var(--muted);font-size:11px}
+.run-meta{display:grid;justify-items:end;gap:5px;flex:none}
+.run-status{font:10px 'DM Mono',monospace;font-style:normal;letter-spacing:.08em;color:#d5fb68}
+.run-status.failed{color:#ff9b9b}
+.run-status.running{color:#9cc9ff}
