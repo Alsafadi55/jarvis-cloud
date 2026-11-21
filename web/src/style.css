@@ -352,3 +352,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .message pre{overflow:auto;max-width:100%;margin:12px 0;padding:14px;border:1px solid #2a303b;border-radius:12px;background:#080b10;color:#dce5ee;font:12px/1.65 'DM Mono',monospace;white-space:pre}
 .message code.inline-code{padding:2px 5px;border-radius:5px;background:#ffffff12;color:#d5fb68;font: .92em 'DM Mono',monospace}
 .message a{color:#d5fb68;text-decoration:underline;text-underline-offset:3px}
+
+
+.copy-message{display:block;margin:10px 0 0 auto;border:1px solid #2b313d;border-radius:7px;background:#111720;color:#9ba5b6;padding:5px 9px;font-size:10px;opacity:.65}
+.copy-message:hover{opacity:1;color:#d5fb68;border-color:#647a42}
