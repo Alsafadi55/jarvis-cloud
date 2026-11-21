@@ -119,9 +119,9 @@ async function loadConversations() {
 async function newConversation() {
   const { data, error } = await supabase.from("conversations").insert({ user_id: state.user.id, title:"New conversation" }).select("id,title,updated_at").single();
   if (error) return feedback("chat-feedback", error.message);
-  state.conversations.unshift(data); state.activeId = data.id; render();
+  state.conversations.unshift(data); state.activeId = data.id; render(); await showWorkspaceView("chat");
 }
-async function selectConversation(id) { state.activeId = id; render(); await loadMessages(id); }
+async function selectConversation(id) { state.activeId = id; render(); await showWorkspaceView("chat"); }
 async function loadMessages(id) {
   const area = document.querySelector("#conversation");
   if (!area) return;
@@ -179,8 +179,10 @@ async function refreshAllModels(){
  for(const pair of pairs){const provider=pair[0],key=pair[1];const result=await supabase.functions.invoke("chat",{body:{action:"models",provider:provider,api_key:key==="__SERVER_GEMINI__"?undefined:key}});if(!result.error&&!result.data?.error)state.models=state.models.filter(m=>m.provider!==provider).concat((result.data.models||[]).map(m=>({provider:provider,providerName:PROVIDERS.find(p=>p.id===provider).name,id:m.id})));else feedback("provider-feedback","Could not refresh "+provider+".");}
  renderModelList();feedback("provider-feedback","Model list refreshed.","success");
 }
-function disconnectProvider(provider){
- delete state.providerKeys[provider];state.models=state.models.filter(m=>m.provider!==provider);
+async function disconnectProvider(provider){
+ delete state.providerKeys[provider];
+ try { await deleteProviderKey(state.user.id,provider); } catch (error) { feedback("provider-feedback","Could not remove the saved encrypted key."); return; }
+ state.models=state.models.filter(m=>m.provider!==provider);
  if(state.selectedProvider===provider){state.selectedProvider="gemini";state.selectedModel="";}
  renderProviderCards();renderModelList();feedback("provider-feedback","Disconnected "+provider+".","success");
 }
