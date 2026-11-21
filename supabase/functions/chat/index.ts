@@ -57,6 +57,10 @@ function toBase64(bytes:Uint8Array):string{
 }
 
 const agentToolDefinitions = [
+  {type:"function",function:{name:"github_list_repos",description:"List repositories accessible to the connected GitHub account.",parameters:{type:"object",properties:{},additionalProperties:false}}},
+  {type:"function",function:{name:"github_read_file",description:"Read a text file from a repository the connected GitHub account can access.",parameters:{type:"object",properties:{owner:{type:"string"},repo:{type:"string"},path:{type:"string"}},required:["owner","repo","path"],additionalProperties:false}}},
+  {type:"function",function:{name:"github_list_issues",description:"List open issues for a repository the connected GitHub account can access.",parameters:{type:"object",properties:{owner:{type:"string"},repo:{type:"string"}},required:["owner","repo"],additionalProperties:false}}},
+  {type:"function",function:{name:"github_create_issue",description:"Create a GitHub issue only when the user explicitly asks to create one.",parameters:{type:"object",properties:{owner:{type:"string"},repo:{type:"string"},title:{type:"string"},body:{type:"string"}},required:["owner","repo","title"],additionalProperties:false}}},
   {type:"function",function:{name:"create_task",description:"Create a task in the user's JARVIS task list. Only call when the user explicitly asks to create or add a task.",parameters:{type:"object",properties:{title:{type:"string"},description:{type:"string"},priority:{type:"string",enum:["low","normal","high"]},project_id:{type:"string"},due_at:{type:"string",description:"Optional ISO date-time"}},required:["title"],additionalProperties:false}}},
   {type:"function",function:{name:"list_projects",description:"List the user's JARVIS projects so tasks can be assigned to the right project.",parameters:{type:"object",properties:{},additionalProperties:false}}},
   {type:"function",function:{name:"list_tasks",description:"List the user's JARVIS tasks, optionally filtered by status.",parameters:{type:"object",properties:{status:{type:"string",enum:["pending","in_progress","completed","cancelled"]}},additionalProperties:false}}},
@@ -68,7 +72,7 @@ const agentToolDefinitions = [
   {type:"function",function:{name:"create_text_file",description:"Create a text, Markdown, JSON, CSV, or code file in the user's private JARVIS workspace when requested.",parameters:{type:"object",properties:{filename:{type:"string"},content:{type:"string"}},required:["filename","content"],additionalProperties:false}}},
   {type:"function",function:{name:"search_memories",description:"Search the user's own saved memories for matching information.",parameters:{type:"object",properties:{query:{type:"string"}},required:["query"],additionalProperties:false}}},
 ];
-async function runAgentTool(supabase:any,userId:string,name:string,args:any){
+async function runAgentTool(supabase:any,userId:string,name:string,args:any,githubToken:string=""){
   if(name==="create_task"){
     const title=typeof args.title==="string"?args.title.trim().slice(0,180):"";
     if(!title)return {ok:false,error:"A task title is required."};
@@ -137,6 +141,47 @@ async function runAgentTool(supabase:any,userId:string,name:string,args:any){
     if(error)return {ok:false,error:"Could not create the file in your workspace."};
     await supabase.from("activity_events").insert({user_id:userId,event_type:"file_created",title:"Created file: "+filename,details:"Created by JARVIS agent mode."});
     return {ok:true,file:{name:filename,path,size:content.length}};
+  }
+  if(name.startsWith("github_")){
+    if(!githubToken)return {ok:false,error:"Connect GitHub in the Plugins page before using GitHub tools."};
+    const owner=typeof args.owner==="string"?args.owner.trim():"";
+    const repo=typeof args.repo==="string"?args.repo.trim():"";
+    const validRepo=(value:string)=>/^[A-Za-z0-9_.-]{1,100}$/.test(value)&&value!=="."&&value!=="..";
+    const headers={Authorization:"Bearer "+githubToken,Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","User-Agent":"JARVIS-Cloud"};
+    if(name==="github_list_repos"){
+      const response=await fetch("https://api.github.com/user/repos?sort=updated&per_page=30",{headers});
+      const data=await response.json().catch(()=>[]);
+      if(!response.ok)return {ok:false,error:"GitHub could not list repositories ("+response.status+")."};
+      return {ok:true,repositories:(data??[]).map((r:any)=>({full_name:r.full_name,private:r.private,description:r.description,url:r.html_url})).slice(0,30)};
+    }
+    if(!validRepo(owner)||!validRepo(repo))return {ok:false,error:"Invalid GitHub repository name."};
+    if(name==="github_read_file"){
+      const filePath=typeof args.path==="string"?args.path.replace(/^\/+/,"").slice(0,400):"";
+      if(!filePath||filePath.split("/").some((part:string)=>part===".."||part==="."))return {ok:false,error:"Invalid repository file path."};
+      const response=await fetch("https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/contents/"+filePath.split("/").map(encodeURIComponent).join("/"),{headers});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok||data.type!=="file"||typeof data.content!=="string")return {ok:false,error:"GitHub file could not be read."};
+      const decoded=atob(data.content.replace(/\s/g,""));
+      const bytes=Uint8Array.from(decoded,(ch:string)=>ch.charCodeAt(0));
+      if(bytes.length>120000)return {ok:false,error:"File is too large to read through Agent Mode."};
+      return {ok:true,path:filePath,content:new TextDecoder().decode(bytes).slice(0,40000)};
+    }
+    if(name==="github_list_issues"){
+      const response=await fetch("https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/issues?state=open&per_page=30",{headers});
+      const data=await response.json().catch(()=>[]);
+      if(!response.ok)return {ok:false,error:"GitHub could not list issues ("+response.status+")."};
+      return {ok:true,issues:(data??[]).filter((item:any)=>!item.pull_request).map((item:any)=>({number:item.number,title:item.title,state:item.state,url:item.html_url,labels:(item.labels??[]).map((l:any)=>l.name)}))};
+    }
+    if(name==="github_create_issue"){
+      const title=typeof args.title==="string"?args.title.trim().slice(0,240):"";
+      if(!title)return {ok:false,error:"An issue title is required."};
+      const body=typeof args.body==="string"?args.body.slice(0,10000):"";
+      const response=await fetch("https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/issues",{method:"POST",headers:{...headers,"Content-Type":"application/json"},body:JSON.stringify({title,body})});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)return {ok:false,error:"GitHub could not create the issue ("+response.status+"). Check token permissions."};
+      await supabase.from("activity_events").insert({user_id:userId,event_type:"github_issue_created",title:"Created GitHub issue #"+data.number,details:owner+"/"+repo});
+      return {ok:true,issue:{number:data.number,title:data.title,url:data.html_url}};
+    }
   }
   return {ok:false,error:"This tool is not available."};
 }
