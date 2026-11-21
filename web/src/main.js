@@ -314,11 +314,42 @@ async function sendMessage(e) {
       agent_mode:state.agentMode,
       github_token:state.providerKeys["plugin-github"]||"",
       plugins:state.plugins.filter(x=>x.enabled).map(x=>x.plugin_id),
-      attachments:sentFiles.map(x=>({name:x.name,type:x.type,path:x.path,text:x.text||""}))
+      attachments:sentFiles.map(x=>({name:x.name,type:x.type,path:x.path,text:x.text||""})),
+      stream:!state.agentMode&&["deepseek","xai","openrouter","groq","mistral","together","perplexity"].includes(state.selectedProvider)
     })});
-    const data=await response.json().catch(()=>({}));
-    if(!response.ok||data?.error)throw new Error(data?.message||data?.error||"Request failed.");
-    area.innerHTML=`<div class="message user-message">${escapeHtml(message)}${sentFiles.map(x=>`<div class="file-chip">📎 ${escapeHtml(x.name)}</div>`).join("")}</div><div class="message assistant-message">${renderMessageContent(data.message)}<button type="button" class="copy-message" data-copy-message="${escapeHtml(data.message)}">Copy</button></div>`;
+    let finalMessage="";
+    if((response.headers.get("content-type")||"").includes("text/event-stream")){
+      if(!response.ok)throw new Error("Streaming request failed ("+response.status+").");
+      const reader=response.body.getReader();
+      const decoder=new TextDecoder();
+      let buffer="";
+      const assistant=area.querySelector(".assistant-message");
+      assistant.innerHTML='<div class="streaming-cursor" aria-label="JARVIS is responding"></div>';
+      const textNode=document.createTextNode("");
+      assistant.insertBefore(textNode,assistant.firstChild);
+      while(true){
+        const {value,done}=await reader.read();
+        if(done)break;
+        buffer+=decoder.decode(value,{stream:true});
+        const lines=buffer.split("\n");buffer=lines.pop()||"";
+        for(const line of lines){
+          if(!line.startsWith("data:"))continue;
+          const raw=line.slice(5).trim();
+          if(!raw)continue;
+          let event;try{event=JSON.parse(raw);}catch{continue;}
+          if(event.error)throw new Error(event.error);
+          if(typeof event.token==="string"){finalMessage+=event.token;textNode.textContent+=event.token;area.scrollTop=area.scrollHeight;}
+          if(typeof event.message==="string")finalMessage=event.message;
+        }
+      }
+      if(!finalMessage)throw new Error("The provider returned an empty response.");
+    }else{
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok||data?.error)throw new Error(data?.message||data?.error||"Request failed.");
+      finalMessage=data.message||"";
+    }
+    if(!finalMessage)throw new Error("The provider returned an empty response.");
+    area.innerHTML=`<div class="message user-message">${escapeHtml(message)}${sentFiles.map(x=>`<div class="file-chip">📎 ${escapeHtml(x.name)}</div>`).join("")}</div><div class="message assistant-message">${renderMessageContent(finalMessage)}<button type="button" class="copy-message" data-copy-message="${escapeHtml(finalMessage)}">Copy</button></div>`;
     bindMessageActions(area);
     for(const file of sentFiles)await supabase.storage.from("jarvis-user-files").remove([file.path]);
     state.attachments=[];renderAttachmentList();feedback("chat-feedback","", "success");
