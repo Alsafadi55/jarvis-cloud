@@ -153,6 +153,15 @@ Deno.serve(async (req: Request) => {
   if(conversationError)return json({error:"conversation_lookup_failed"},500);
   if(!conversation)return json({error:"conversation_not_found"},404);
 
+  let agentRunId:string|null=null;
+  const agentActions:Array<{tool:string;ok:boolean}>=[];
+  if(agentMode){
+    const {data:run,error:runError}=await supabase.from("agent_runs").insert({
+      user_id:userId,conversation_id:conversation.id,goal:message,status:"running",provider,model,
+    }).select("id").single();
+    if(runError||!run)return json({error:"agent_run_start_failed",message:"Could not start this agent run."},500);
+    agentRunId=run.id;
+  }
   const {error:userSaveError}=await supabase.from("messages").insert({
     conversation_id:conversation.id,user_id:userId,role:"user",content:message,
   });
@@ -257,6 +266,7 @@ Deno.serve(async (req: Request) => {
           const toolResults:any[]=[];
           for(const call of calls.slice(0,6)){
             const toolResult=await runAgentTool(supabase,userId,String(call.name),call.input??{});
+            agentActions.push({tool:String(call.name),ok:!!toolResult.ok});
             toolResults.push({type:"tool_result",tool_use_id:call.id,content:JSON.stringify(toolResult)});
           }
           messages.push({role:"user",content:toolResults});
@@ -295,6 +305,7 @@ Deno.serve(async (req: Request) => {
           for(const part of calls.slice(0,6)){
             const call=part.functionCall;
             const toolResult=await runAgentTool(supabase,userId,String(call.name),call.args??{});
+            agentActions.push({tool:String(call.name),ok:!!toolResult.ok});
             responses.push({name:call.name,response:toolResult});
           }
           contents.push({role:"user",parts:responses.map(item=>({functionResponse:item}))});
@@ -335,8 +346,10 @@ Deno.serve(async (req: Request) => {
             toolCalls++;
             let args:any={};
             try{args=JSON.parse(call.function?.arguments??"{}");}catch{args={};}
-            const toolResult=await runAgentTool(supabase,userId,String(call.function?.name??""),args);
-            if(toolResult.ok)completedActions.push(String(call.function?.name??"")+" completed");
+            const toolName=String(call.function?.name??"");
+            const toolResult=await runAgentTool(supabase,userId,toolName,args);
+            agentActions.push({tool:toolName,ok:!!toolResult.ok});
+            if(toolResult.ok)completedActions.push(toolName+" completed");
             messages.push({role:"tool",tool_call_id:call.id,content:JSON.stringify(toolResult)});
           }
           continue;
@@ -353,20 +366,24 @@ Deno.serve(async (req: Request) => {
         ?"The provider rejected this key or model access. Check the key and model permissions."
         :status===429?"Provider rate limit or quota reached. Wait and try again."
         :"The provider could not complete the request ("+status+"). Check model access and API billing.";
+      if(agentRunId)await supabase.from("agent_runs").update({status:"failed",error:message,actions:agentActions,completed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",agentRunId).eq("user_id",userId);
       return json({error:"provider_request_failed",message},status===429?429:502);
     }
   }catch(e){
     clearTimeout(timeout);
-    return json({error:"provider_unavailable",message:e instanceof Error&&e.name==="AbortError"?"The AI request timed out. Try again.":"The AI provider could not be reached. Please try again."},502);
+    const failureMessage=e instanceof Error&&e.name==="AbortError"?"The AI request timed out. Try again.":"The AI provider could not be reached. Please try again.";
+    if(agentRunId)await supabase.from("agent_runs").update({status:"failed",error:failureMessage,actions:agentActions,completed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",agentRunId).eq("user_id",userId);
+    return json({error:"provider_unavailable",message:failureMessage},502);
   }
   clearTimeout(timeout);
-  if(!reply)return json({error:"empty_provider_response",message:"The provider returned an empty response."},502);
+  if(!reply){if(agentRunId)await supabase.from("agent_runs").update({status:"failed",error:"Empty provider response",actions:agentActions,completed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",agentRunId).eq("user_id",userId);return json({error:"empty_provider_response",message:"The provider returned an empty response."},502);}
 
   const {error:assistantSaveError}=await supabase.from("messages").insert({
     conversation_id:conversation.id,user_id:userId,role:"assistant",content:reply,
   });
-  if(assistantSaveError)return json({error:"assistant_save_failed",message:reply},500);
+  if(assistantSaveError){if(agentRunId)await supabase.from("agent_runs").update({status:"failed",error:"Could not save assistant reply",actions:agentActions,completed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",agentRunId).eq("user_id",userId);return json({error:"assistant_save_failed",message:reply},500);}
   await supabase.from("conversations").update({updated_at:new Date().toISOString()})
     .eq("id",conversation.id).eq("user_id",userId);
-  return json({message:reply,conversation_id:conversation.id});
+  if(agentRunId)await supabase.from("agent_runs").update({status:"completed",actions:agentActions,result:reply,completed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",agentRunId).eq("user_id",userId);
+  return json({message:reply,conversation_id:conversation.id,agent_run_id:agentRunId});
 });
