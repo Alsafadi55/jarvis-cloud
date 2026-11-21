@@ -57,7 +57,8 @@ function toBase64(bytes:Uint8Array):string{
 }
 
 const agentToolDefinitions = [
-  {type:"function",function:{name:"create_task",description:"Create a task in the user's JARVIS task list. Only call when the user explicitly asks to create or add a task.",parameters:{type:"object",properties:{title:{type:"string"},description:{type:"string"},priority:{type:"string",enum:["low","normal","high"]},due_at:{type:"string",description:"Optional ISO date-time"}},required:["title"],additionalProperties:false}}},
+  {type:"function",function:{name:"create_task",description:"Create a task in the user's JARVIS task list. Only call when the user explicitly asks to create or add a task.",parameters:{type:"object",properties:{title:{type:"string"},description:{type:"string"},priority:{type:"string",enum:["low","normal","high"]},project_id:{type:"string"},due_at:{type:"string",description:"Optional ISO date-time"}},required:["title"],additionalProperties:false}}},
+  {type:"function",function:{name:"list_projects",description:"List the user's JARVIS projects so tasks can be assigned to the right project.",parameters:{type:"object",properties:{},additionalProperties:false}}},
   {type:"function",function:{name:"list_tasks",description:"List the user's JARVIS tasks, optionally filtered by status.",parameters:{type:"object",properties:{status:{type:"string",enum:["pending","in_progress","completed","cancelled"]}},additionalProperties:false}}},
   {type:"function",function:{name:"update_task_status",description:"Change the status of one of the user's existing tasks.",parameters:{type:"object",properties:{id:{type:"string"},status:{type:"string",enum:["pending","in_progress","completed","cancelled"]}},required:["id","status"],additionalProperties:false}}},
   {type:"function",function:{name:"save_memory",description:"Save a memory only when the user explicitly asks JARVIS to remember or save the information.",parameters:{type:"object",properties:{memory_type:{type:"string",enum:["general","preference","project","instruction"]},content:{type:"string"}},required:["content"],additionalProperties:false}}},
@@ -72,11 +73,17 @@ async function runAgentTool(supabase:any,userId:string,name:string,args:any){
     const title=typeof args.title==="string"?args.title.trim().slice(0,180):"";
     if(!title)return {ok:false,error:"A task title is required."};
     const priority=["low","normal","high"].includes(args.priority)?args.priority:"normal";
+    let projectId:string|null=null;
+    if(typeof args.project_id==="string"){const {data:project}=await supabase.from("projects").select("id").eq("id",args.project_id).eq("user_id",userId).maybeSingle();if(!project)return {ok:false,error:"That project was not found in your workspace."};projectId=project.id;}
     const dueAt=typeof args.due_at==="string"&&Number.isFinite(Date.parse(args.due_at))?new Date(args.due_at).toISOString():null;
-    const {data,error}=await supabase.from("tasks").insert({user_id:userId,title,description:typeof args.description==="string"?args.description.slice(0,3000):"",priority,due_at:dueAt}).select("id,title,status,priority,due_at").single();
+    const {data,error}=await supabase.from("tasks").insert({user_id:userId,title,description:typeof args.description==="string"?args.description.slice(0,3000):"",priority,project_id:projectId,due_at:dueAt}).select("id,title,status,priority,due_at").single();
     if(error)return {ok:false,error:"Could not create task."};
     await supabase.from("activity_events").insert({user_id:userId,event_type:"task_created",title:"Created task: "+title,details:"Created by JARVIS agent mode."});
     return {ok:true,task:data};
+  }
+  if(name==="list_projects"){
+    const {data,error}=await supabase.from("projects").select("id,name,description,status").eq("user_id",userId).order("updated_at",{ascending:false}).limit(30);
+    return error?{ok:false,error:"Could not load projects."}:{ok:true,projects:data??[]};
   }
   if(name==="list_tasks"){
     let query=supabase.from("tasks").select("id,title,description,status,priority,due_at").eq("user_id",userId).order("created_at",{ascending:false}).limit(20);
