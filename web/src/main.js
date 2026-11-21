@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import "./style.css";
 import { renderWorkspacePage } from "./workspace.js";
+import { saveProviderKey, loadProviderKeys, deleteProviderKey } from "./secure-store.js";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -30,7 +31,7 @@ function render() {
     document.querySelector("#signup").addEventListener("click", signUp);
     return;
   }
-  app.innerHTML = `<div class="workspace"><aside class="sidebar"><div class="brand"><div class="brand-mark">${icon("spark")}</div><span>JARVIS<span class="muted"> CLOUD</span></span></div><button class="new-chat" id="new-chat">${icon("plus")} New conversation</button><div class="side-label">WORKSPACE</div><button class="history-item" id="nav-dashboard">◈ &nbsp; Dashboard</button><button class="history-item" id="nav-chat">✧ &nbsp; Chat</button><button class="history-item" id="nav-plugins">▦ &nbsp; Plugins</button><button class="history-item" id="nav-skills">◇ &nbsp; Skills</button><button class="history-item" id="nav-files">⌁ &nbsp; Files</button><button class="history-item" id="nav-memory">◉ &nbsp; Memory</button><button class="history-item" id="nav-tasks">☷ &nbsp; Tasks</button><button class="history-item" id="nav-activity">◷ &nbsp; Activity</button><button class="history-item" id="nav-settings">⚙ &nbsp; Settings</button><div class="side-label">YOUR HISTORY</div><div class="history" id="history">${state.conversations.map(c => `<button class="history-item ${c.id===state.activeId?"active":""}" data-id="${c.id}">${escapeHtml(c.title || "New conversation")}</button>`).join("") || '<div class="empty-history">Your conversations will appear here.</div>'}</div><div class="profile"><div class="avatar">${escapeHtml((state.user.email||"J").slice(0,1).toUpperCase())}</div><div class="profile-info"><b>${escapeHtml(state.user.email || "JARVIS user")}</b><span>Connected account</span></div><button class="icon-button" id="logout" aria-label="Sign out">${icon("logout")}</button></div></aside><main class="chat-area"><header class="topbar"><div><span class="online-dot"></span><span>JARVIS SYSTEM</span></div><div class="topbar-actions"><span class="secure-label">PRIVATE SESSION</span><button class="models-toggle" id="open-models" type="button">Models & API <span>↗</span></button></div></header><section class="conversation" id="conversation"><div class="welcome"><div class="welcome-orb">${icon("spark")}</div><div class="eyebrow">YOUR PERSONAL AI</div><h1>What can I help you<br><em>with today?</em></h1><p>Your cloud workspace is connected. Start a conversation with JARVIS.</p><div class="suggestions"><button data-prompt="Help me organize my projects">Organize my projects <span>↗</span></button><button data-prompt="Explain how JARVIS Cloud works">Explain JARVIS Cloud <span>↗</span></button><button data-prompt="Help me plan my next week">Plan my week <span>↗</span></button></div></div></section><div class="composer-wrap"><div id="chat-feedback" class="chat-feedback" role="status"></div><form class="composer" id="chat-form"><button class="attach-button" id="attach-files" type="button" aria-label="Attach files">＋</button><input id="chat-files" type="file" hidden multiple accept="image/jpeg,image/png,image/webp,application/pdf,text/plain,text/markdown,application/json,.js,.ts,.py,.html,.css"><textarea id="message" rows="1" placeholder="Message JARVIS..." maxlength="20000"></textarea><button class="send-button" type="submit" aria-label="Send message">${icon("send")}</button></form><div id="attachment-list" class="attachment-list"></div><div class="composer-hint">JARVIS can make mistakes. Verify important information.</div></div></main><aside class="models-drawer" id="models-drawer"><div class="drawer-head"><div><div class="eyebrow">MODEL SETTINGS</div><h2>API Keys & Models</h2></div><button class="icon-button" id="close-models" aria-label="Close">×</button></div><div class="drawer-section-title">API KEYS <span>Connect your providers</span></div><div id="provider-cards" class="provider-cards"></div><div class="key-note">Keys stay in this browser tab memory only. They are sent to JARVIS over HTTPS when needed, not saved in the database. Re-enter after refreshing. Provider API usage may have separate charges.</div><div id="provider-feedback" class="feedback" role="status"></div><div class="model-list-head"><span>ALL AVAILABLE MODELS</span><button id="refresh-models" type="button">Refresh</button></div><input id="model-search" class="model-search" type="search" placeholder="Search connected models..."><div id="model-list"><div class="empty-history">Connect a provider to load models.</div></div></aside></div>`;
+  app.innerHTML = `<div class="workspace"><aside class="sidebar"><div class="brand"><div class="brand-mark">${icon("spark")}</div><span>JARVIS<span class="muted"> CLOUD</span></span></div><button class="new-chat" id="new-chat">${icon("plus")} New conversation</button><div class="side-label">WORKSPACE</div><button class="history-item" id="nav-dashboard">◈ &nbsp; Dashboard</button><button class="history-item" id="nav-chat">✧ &nbsp; Chat</button><button class="history-item" id="nav-plugins">▦ &nbsp; Plugins</button><button class="history-item" id="nav-skills">◇ &nbsp; Skills</button><button class="history-item" id="nav-files">⌁ &nbsp; Files</button><button class="history-item" id="nav-memory">◉ &nbsp; Memory</button><button class="history-item" id="nav-tasks">☷ &nbsp; Tasks</button><button class="history-item" id="nav-activity">◷ &nbsp; Activity</button><button class="history-item" id="nav-settings">⚙ &nbsp; Settings</button><div class="side-label">YOUR HISTORY</div><div class="history" id="history">${state.conversations.map(c => `<button class="history-item ${c.id===state.activeId?"active":""}" data-id="${c.id}">${escapeHtml(c.title || "New conversation")}</button>`).join("") || '<div class="empty-history">Your conversations will appear here.</div>'}</div><div class="profile"><div class="avatar">${escapeHtml((state.user.email||"J").slice(0,1).toUpperCase())}</div><div class="profile-info"><b>${escapeHtml(state.user.email || "JARVIS user")}</b><span>Connected account</span></div><button class="icon-button" id="logout" aria-label="Sign out">${icon("logout")}</button></div></aside><main class="chat-area"><header class="topbar"><div><span class="online-dot"></span><span>JARVIS SYSTEM</span></div><div class="topbar-actions"><span class="secure-label">PRIVATE SESSION</span><button class="models-toggle" id="open-models" type="button">Models & API <span>↗</span></button></div></header><section class="conversation" id="conversation"><div class="welcome"><div class="welcome-orb">${icon("spark")}</div><div class="eyebrow">YOUR PERSONAL AI</div><h1>What can I help you<br><em>with today?</em></h1><p>Your cloud workspace is connected. Start a conversation with JARVIS.</p><div class="suggestions"><button data-prompt="Help me organize my projects">Organize my projects <span>↗</span></button><button data-prompt="Explain how JARVIS Cloud works">Explain JARVIS Cloud <span>↗</span></button><button data-prompt="Help me plan my next week">Plan my week <span>↗</span></button></div></div></section><div class="composer-wrap"><div id="chat-feedback" class="chat-feedback" role="status"></div><form class="composer" id="chat-form"><button class="attach-button" id="attach-files" type="button" aria-label="Attach files">＋</button><input id="chat-files" type="file" hidden multiple accept="image/jpeg,image/png,image/webp,application/pdf,text/plain,text/markdown,application/json,.js,.ts,.py,.html,.css"><textarea id="message" rows="1" placeholder="Message JARVIS..." maxlength="20000"></textarea><button class="send-button" type="submit" aria-label="Send message">${icon("send")}</button></form><div id="attachment-list" class="attachment-list"></div><div class="composer-hint">JARVIS can make mistakes. Verify important information.</div></div></main><aside class="models-drawer" id="models-drawer"><div class="drawer-head"><div><div class="eyebrow">MODEL SETTINGS</div><h2>API Keys & Models</h2></div><button class="icon-button" id="close-models" aria-label="Close">×</button></div><div class="drawer-section-title">API KEYS <span>Connect your providers</span></div><div id="provider-cards" class="provider-cards"></div><div class="key-note">Provider keys are encrypted with AES-GCM and stored in this browser on this device. They are not uploaded to Supabase and do not sync to other devices. Keep this device protected. Provider API usage may have separate charges.</div><div id="provider-feedback" class="feedback" role="status"></div><div class="model-list-head"><span>ALL AVAILABLE MODELS</span><button id="refresh-models" type="button">Refresh</button></div><input id="model-search" class="model-search" type="search" placeholder="Search connected models..."><div id="model-list"><div class="empty-history">Connect a provider to load models.</div></div></aside></div>`;
   document.querySelector("#logout").addEventListener("click", signOut);
   document.querySelector("#open-models").addEventListener("click", () => document.querySelector("#models-drawer").classList.add("open"));
   document.querySelector("#close-models").addEventListener("click", () => document.querySelector("#models-drawer").classList.remove("open"));
@@ -88,7 +89,27 @@ async function signUp() {
   state.user = data.user; await afterAuth();
 }
 async function signOut() { await supabase.auth.signOut(); state.user = null; state.conversations = []; state.activeId = null; state.providerKeys = {}; state.models = []; state.selectedProvider = "gemini"; state.selectedModel = ""; state.skills=[]; state.plugins=[]; state.attachments=[]; render(); }
-async function afterAuth() { await Promise.all([loadConversations(),loadSkills(),loadPlugins()]); await loadServerGemini(); render(); await showWorkspaceView("dashboard"); }
+async function afterAuth() {
+  try { state.providerKeys = await loadProviderKeys(state.user.id); }
+  catch (error) { console.warn("Could not restore encrypted provider keys:", error); state.providerKeys = {}; }
+  await Promise.all([loadConversations(),loadSkills(),loadPlugins()]);
+  await loadServerGemini();
+  await refreshRestoredModels();
+  render();
+  await showWorkspaceView("dashboard");
+}
+async function refreshRestoredModels() {
+  const entries = Object.entries(state.providerKeys).filter(([id,key]) => id !== "gemini" || key !== "__SERVER_GEMINI__");
+  for (const [provider,key] of entries) {
+    try {
+      const result = await supabase.functions.invoke("chat",{body:{action:"models",provider,api_key:key}});
+      if (!result.error && !result.data?.error) {
+        state.models = state.models.filter(m=>m.provider!==provider).concat((result.data.models||[]).map(m=>({provider,providerName:PROVIDERS.find(p=>p.id===provider)?.name||provider,id:m.id})));
+      }
+    } catch (error) { console.warn("Could not refresh models for",provider); }
+  }
+  state.models.sort((a,b)=>a.providerName.localeCompare(b.providerName)||a.id.localeCompare(b.id));
+}
 async function loadConversations() {
   const { data, error } = await supabase.from("conversations").select("id,title,updated_at").order("updated_at", { ascending:false }).limit(50);
   if (error) { console.error(error); return; }
@@ -144,6 +165,7 @@ async function connectProvider(provider){
  try{
   const result=await supabase.functions.invoke("chat",{body:{action:"models",provider:provider,api_key:key}});
   if(result.error||result.data?.error)throw new Error(result.data?.message||result.error?.message||"Could not verify key.");
+  await saveProviderKey(state.user.id,provider,key);
   state.providerKeys[provider]=key;
   state.models=state.models.filter(m=>m.provider!==provider).concat((result.data.models||[]).map(m=>({provider:provider,providerName:PROVIDERS.find(p=>p.id===provider).name,id:m.id})));
   state.models.sort((x,y)=>x.providerName.localeCompare(y.providerName)||x.id.localeCompare(y.id));
@@ -206,6 +228,12 @@ async function loadPlugins(){const {data,error}=await supabase.from("user_plugin
 async function logActivity(type,title,details=""){try{await supabase.from("activity_events").insert({user_id:state.user.id,event_type:type,title,details});}catch(e){console.warn("Activity log unavailable");}}
 async function showWorkspaceView(view){
  state.view=view;
+ const main=document.querySelector(".chat-area");
+ const composer=document.querySelector(".composer-wrap");
+ if(main)main.classList.toggle("workspace-mode",view!=="chat");
+ if(composer)composer.hidden=view!=="chat";
+ const label=document.querySelector(".topbar > div:first-child span:last-child");
+ if(label)label.textContent="JARVIS SYSTEM · "+view.toUpperCase();
  const area=document.querySelector("#conversation");
  if(!area)return;
  document.querySelectorAll(".sidebar [id^='nav-']").forEach(b=>b.classList.toggle("active",b.id==="nav-"+view));
