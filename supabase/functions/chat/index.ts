@@ -131,7 +131,7 @@ Deno.serve(async (req: Request) => {
   const agentMode=body.agent_mode===true;
   const cfg=providers[provider];
   if(!cfg)return json({error:"unsupported_provider",message:"This provider is not supported."},400);
-  if(agentMode&&(provider==="gemini"||provider==="anthropic"))return json({error:"agent_provider_unsupported",message:"Agent tools are currently available with OpenAI-compatible providers. Choose OpenAI, DeepSeek, xAI, OpenRouter, Groq, Mistral, Together, or Perplexity."},400);
+  if(agentMode&&provider==="anthropic")return json({error:"agent_provider_unsupported",message:"Agent tools are currently available with OpenAI-compatible providers. Choose OpenAI, DeepSeek, xAI, OpenRouter, Groq, Mistral, Together, or Perplexity."},400);
   const suppliedKey=typeof body.api_key==="string"?body.api_key.trim():"";
   const key=suppliedKey||(provider==="gemini"?serverGeminiKey:"");
 
@@ -248,25 +248,50 @@ Deno.serve(async (req: Request) => {
       result=await response.json().catch(()=>({}));
       if(response.ok)reply=(result.content??[]).filter((p:any)=>p.type==="text").map((p:any)=>p.text??"").join("\n").trim();
     }else if(cfg.kind==="gemini"){
-      response=await fetch(cfg.base+"/models/"+encodeURIComponent(model)+":generateContent",{
-        method:"POST",
-        headers:{"Content-Type":"application/json",...authHeaders(provider,key)},
-        body:JSON.stringify({
-          systemInstruction:{parts:[{text:systemPrompt}]},
-          contents:[...ordered.slice(0,-1).map(m=>({role:m.role==="assistant"?"model":"user",parts:[{text:m.content}]})),{role:"user",parts:[{text:userPrompt},...imageAttachments.map(a=>({inline_data:{mime_type:a.type,data:a.data}})),...pdfAttachments.map(a=>({inline_data:{mime_type:"application/pdf",data:a.data}}))]}],
-          tools:Array.isArray(body.plugins)&&body.plugins.includes("web-search")?[{google_search:{}}]:undefined,
-          generationConfig:{temperature:0.7,maxOutputTokens:2048},
-        }),
-        signal:controller.signal,
-      });
-      result=await response.json().catch(()=>({}));
+      const contents:any[]=[
+        ...ordered.slice(0,-1).map(m=>({role:m.role==="assistant"?"model":"user",parts:[{text:m.content}]})),
+        {role:"user",parts:[{text:userPrompt},...imageAttachments.map(a=>({inline_data:{mime_type:a.type,data:a.data}})),...pdfAttachments.map(a=>({inline_data:{mime_type:"application/pdf",data:a.data}}))]},
+      ];
+      for(let step=0;step<(agentMode?5:1);step++){
+        const tools:any[]=[];
+        if(Array.isArray(body.plugins)&&body.plugins.includes("web-search"))tools.push({google_search:{}});
+        if(agentMode)tools.push({function_declarations:agentToolDefinitions.map((item:any)=>item.function)});
+        response=await fetch(cfg.base+"/models/"+encodeURIComponent(model)+":generateContent",{
+          method:"POST",
+          headers:{"Content-Type":"application/json",...authHeaders(provider,key)},
+          body:JSON.stringify({
+            systemInstruction:{parts:[{text:systemPrompt}]},
+            contents,tools:tools.length?tools:undefined,
+            generationConfig:{temperature:0.7,maxOutputTokens:2048},
+          }),
+          signal:controller.signal,
+        });
+        result=await response.json().catch(()=>({}));
+        if(!response.ok)break;
+        const candidate=result.candidates?.[0];
+        const parts=candidate?.content?.parts??[];
+        const calls=agentMode?parts.filter((part:any)=>part.functionCall?.name):[];
+        if(calls.length){
+          contents.push(candidate.content);
+          const responses:any[]=[];
+          for(const part of calls.slice(0,6)){
+            const call=part.functionCall;
+            const toolResult=await runAgentTool(supabase,userId,String(call.name),call.args??{});
+            responses.push({name:call.name,response:toolResult});
+          }
+          contents.push({role:"user",parts:responses.map(item=>({functionResponse:item}))});
+          continue;
+        }
+        reply=parts.map((part:any)=>part.text??"").join("").trim();
+        break;
+      }
       if(response.ok){
-        reply=(result.candidates?.[0]?.content?.parts??[]).map((p:any)=>p.text??"").join("").trim();
         const chunks=result.candidates?.[0]?.groundingMetadata?.groundingChunks??[];
         const sources=chunks.map((chunk:any)=>chunk.web).filter((web:any)=>web&&typeof web.uri==="string")
           .slice(0,6).map((web:any,index:number)=>"["+(index+1)+"] "+String(web.title??"Source")+" — "+web.uri);
         if(sources.length)reply+="\n\nSources:\n"+sources.join("\n");
       }
+
     }else{
       const messages:any[]=[
         {role:"system",content:systemPrompt},
