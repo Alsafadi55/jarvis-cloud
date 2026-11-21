@@ -417,7 +417,7 @@ Deno.serve(async (req: Request) => {
     return json({error:"provider_unavailable",message:failureMessage},502);
   }
   clearTimeout(timeout);
-  if(agentMode&&agentActions.some(action=>action.ok))reply+=(reply?"\n\n":"")+"Workspace actions: "+agentActions.filter(action=>action.ok).map(action=>action.tool.replace(/_/g," ")+" completed").join("; ")+".");
+  if(agentMode&&agentActions.some(action=>action.ok))reply+=(reply?"\n\n":"")+"Workspace actions: "+agentActions.filter(action=>action.ok).map(action=>action.tool.replace(/_/g," ")+" completed").join("; ")+".";
   if(!reply){if(agentRunId)await supabase.from("agent_runs").update({status:"failed",error:"Empty provider response",actions:agentActions,completed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",agentRunId).eq("user_id",userId);return json({error:"empty_provider_response",message:"The provider returned an empty response."},502);}
 
   const {error:assistantSaveError}=await supabase.from("messages").insert({
