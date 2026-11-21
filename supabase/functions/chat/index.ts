@@ -318,6 +318,8 @@ Deno.serve(async (req: Request) => {
   }
   const availableAgentTools=agentToolDefinitions.filter((item:any)=>!item.function.name.startsWith("github_")||!!githubToken);
   const controller=new AbortController();
+  const cancelFromClient=()=>controller.abort();
+  req.signal.addEventListener("abort",cancelFromClient,{once:true});
   const timeout=setTimeout(()=>controller.abort(),60000);
   let reply="";
   try{
