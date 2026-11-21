@@ -420,6 +420,66 @@ Deno.serve(async (req: Request) => {
       }
 
     }else{
+      if(body.stream===true&&!agentMode){
+        response=await fetch(cfg.base+"/chat/completions",{
+          method:"POST",
+          headers:{"Content-Type":"application/json",...authHeaders(provider,key)},
+          body:JSON.stringify({model,messages:[
+            {role:"system",content:systemPrompt},
+            ...ordered.slice(0,-1).map(m=>({role:m.role==="assistant"?"assistant":"user",content:m.content})),
+            {role:"user",content:[{type:"text",text:userPrompt},...imageAttachments.map(a=>({type:"image_url",image_url:{url:"data:"+a.type+";base64,"+a.data}}))]}
+          ],max_tokens:2048,stream:true}),
+          signal:controller.signal,
+        });
+        if(!response.ok){
+          clearTimeout(timeout);
+          const failed=await response.json().catch(()=>({}));
+          const status=response.status;
+          const message=status===401||status===403?"The provider rejected this key or model access. Check the key and model permissions.":status===429?"Provider rate limit or quota reached. Wait and try again.":"The provider could not complete the request ("+status+"). "+String(failed?.error?.message??"");
+          return json({error:"provider_request_failed",message},status===429?429:502);
+        }
+        if(!response.body){clearTimeout(timeout);return json({error:"stream_unavailable",message:"This provider did not return a readable stream."},502);}
+        const upstream=response.body;
+        const encoder=new TextEncoder();
+        let savedReply="";
+        const stream=new ReadableStream({
+          async start(target){
+            const reader=upstream.getReader();
+            let buffer="";
+            const emit=(value:unknown)=>target.enqueue(encoder.encode("data: "+JSON.stringify(value)+"\n\n"));
+            try{
+              while(true){
+                const {value,done}=await reader.read();
+                if(done)break;
+                buffer+=new TextDecoder().decode(value,{stream:true});
+                const lines=buffer.split("\n");buffer=lines.pop()??"";
+                for(const line of lines){
+                  if(!line.startsWith("data:"))continue;
+                  const raw=line.slice(5).trim();
+                  if(!raw||raw==="[DONE]")continue;
+                  let packet:any;try{packet=JSON.parse(raw);}catch{continue;}
+                  const token=packet.choices?.[0]?.delta?.content;
+                  if(typeof token==="string"&&token){savedReply+=token;emit({token});}
+                }
+              }
+              if(!savedReply.trim()){emit({error:"The provider returned an empty response."});target.close();return;}
+              const {error:saveError}=await supabase.from("messages").insert({conversation_id:conversation.id,user_id:userId,role:"assistant",content:savedReply});
+              if(saveError){emit({error:"Could not save the assistant response."});target.close();return;}
+              await supabase.from("conversations").update({updated_at:new Date().toISOString()}).eq("id",conversation.id).eq("user_id",userId);
+              emit({message:savedReply,done:true});
+              target.close();
+            }catch(error){
+              try{emit({error:controller.signal.aborted?"Generation stopped.":"The response stream was interrupted."});target.close();}catch{}
+            }finally{
+              clearTimeout(timeout);
+              req.signal.removeEventListener("abort",cancelFromClient);
+              try{reader.releaseLock();}catch{}
+            }
+          },
+          async cancel(){controller.abort();try{await upstream.cancel();}catch{}clearTimeout(timeout);}
+        });
+        return new Response(stream,{headers:{...corsHeaders,"Content-Type":"text/event-stream; charset=utf-8","Cache-Control":"no-cache, no-transform","Connection":"keep-alive","X-Accel-Buffering":"no"}});
+      }
       const messages:any[]=[
         {role:"system",content:systemPrompt},
         ...ordered.slice(0,-1).map(m=>({role:m.role==="assistant"?"assistant":"user",content:m.content})),
