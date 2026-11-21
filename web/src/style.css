@@ -324,3 +324,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .file-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:18px 0}
 .file-toolbar input[type=search]{flex:1;min-width:180px;max-width:380px;border:1px solid var(--line);border-radius:999px;background:#0b0e15;color:#eef0f5;padding:11px 15px}
 .file-card[hidden]{display:none!important}
+
+
+.project-context{max-width:190px;border:1px solid var(--line);border-radius:999px;background:#11151d;color:#cdd3de;padding:8px 12px;font-size:11px;outline:none}
+.project-context:focus{border-color:#718c4c}
+@media(max-width:700px){.project-context{max-width:128px}.secure-label{display:none}}
