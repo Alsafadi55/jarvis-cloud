@@ -46,11 +46,34 @@ export async function renderWorkspacePage(view, area, ctx) {
      supabase.storage.from("jarvis-user-files").list(user.id+"/chat",{limit:100,sortBy:{column:"created_at",order:"desc"}}),
      supabase.storage.from("jarvis-user-files").list(user.id+"/skills",{limit:100,sortBy:{column:"created_at",order:"desc"}})
    ]);
-   const files=[...(chatFiles.data||[]).map(f=>({ ...f,path:user.id+"/chat/"+f.name,group:"Chat"})),...(skillFiles.data||[]).map(f=>({...f,path:user.id+"/skills/"+f.name,group:"Skills"}))];
-   area.innerHTML=shell("PRIVATE STORAGE","File <em>Workspace</em>","Browse files uploaded to your private JARVIS storage. Files are scoped to your account.",
-    '<div class="library-grid">'+(files.map(f=>'<article class="library-card"><div class="library-card-top"><span class="plugin-category">'+f.group+'</span><span class="library-icon">⌁</span></div><h3>'+esc(f.name)+'</h3><p>'+esc(f.metadata?.mimetype||"Stored file")+' · '+Math.round((f.metadata?.size||0)/1024)+' KB</p><div class="library-actions"><button class="secondary-upload upload-skill" data-file-open="'+esc(f.path)+'">Open</button><button class="delete-skill" data-file-delete="'+esc(f.path)+'">Delete</button></div></article>').join("")||empty("No uploaded files found."))+'</div>');
-   area.querySelectorAll("[data-file-open]").forEach(b=>b.addEventListener("click",async()=>{const r=await supabase.storage.from("jarvis-user-files").createSignedUrl(b.dataset.fileOpen,300);if(r.error)alert(r.error.message);else window.open(r.data.signedUrl,"_blank","noopener");}));
-   area.querySelectorAll("[data-file-delete]").forEach(b=>b.addEventListener("click",async()=>{if(!confirm("Delete this stored file?"))return;const r=await supabase.storage.from("jarvis-user-files").remove([b.dataset.fileDelete]);if(r.error)alert(r.error.message);else await renderWorkspacePage("files",area,ctx);}));
+   const files=[...(chatFiles.data||[]).map(f=>({...f,path:user.id+"/chat/"+f.name,group:"Workspace"})),...(skillFiles.data||[]).map(f=>({...f,path:user.id+"/skills/"+f.name,group:"Skills"}))].filter(f=>f.name);
+   area.innerHTML=shell("PRIVATE STORAGE","File <em>Workspace</em>","Upload, browse, open, and remove files stored privately in your JARVIS account.",
+    '<div class="file-toolbar"><label class="upload-skill">＋ Upload files<input id="workspace-file-upload" type="file" hidden multiple accept="image/*,application/pdf,text/plain,text/markdown,application/json,.md,.txt,.csv,.js,.ts,.py,.html,.css"></label><input id="file-search" type="search" placeholder="Search your files..." aria-label="Search files"><span class="plugin-category">'+files.length+' files</span></div><div id="file-grid" class="library-grid">'+
+    (files.map(f=>'<article class="library-card file-card" data-file-name="'+esc(f.name.toLowerCase())+'"><div class="library-card-top"><span class="plugin-category">'+f.group+'</span><span class="library-icon">⌁</span></div><h3>'+esc(f.name)+'</h3><p>'+esc(f.metadata?.mimetype||"Stored file")+' · '+Math.round((f.metadata?.size||0)/1024)+' KB</p><div class="library-actions"><button class="secondary-upload upload-skill" data-file-open="'+esc(f.path)+'">Preview / Open</button><button class="delete-skill" data-file-delete="'+esc(f.path)+'">Delete</button></div></article>').join("")||empty("No uploaded files found. Add a file to start your workspace."))+'</div>');
+   area.querySelector("#workspace-file-upload").addEventListener("change",async event=>{
+     const selected=[...event.target.files];
+     for(const file of selected){
+       if(file.size>20*1024*1024){alert(file.name+" exceeds 20 MB.");continue;}
+       const path=user.id+"/chat/"+crypto.randomUUID()+"-"+file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+       const result=await supabase.storage.from("jarvis-user-files").upload(path,file,{upsert:false});
+       if(result.error){alert(file.name+": "+result.error.message);continue;}
+       await logActivity("file_uploaded","Uploaded file: "+file.name);
+     }
+     await renderWorkspacePage("files",area,ctx);
+   });
+   area.querySelector("#file-search").addEventListener("input",event=>{
+     const q=event.target.value.toLowerCase();
+     area.querySelectorAll(".file-card").forEach(card=>card.hidden=!card.dataset.fileName.includes(q));
+   });
+   area.querySelectorAll("[data-file-open]").forEach(b=>b.addEventListener("click",async()=>{
+     const r=await supabase.storage.from("jarvis-user-files").createSignedUrl(b.dataset.fileOpen,300);
+     if(r.error)alert(r.error.message);else window.open(r.data.signedUrl,"_blank","noopener");
+   }));
+   area.querySelectorAll("[data-file-delete]").forEach(b=>b.addEventListener("click",async()=>{
+     if(!confirm("Delete this stored file?"))return;
+     const r=await supabase.storage.from("jarvis-user-files").remove([b.dataset.fileDelete]);
+     if(r.error)alert(r.error.message);else{await logActivity("file_deleted","Deleted a workspace file");await renderWorkspacePage("files",area,ctx);}
+   }));
  } else if (view === "activity") {
    const [events,runs]=await Promise.all([
      supabase.from("activity_events").select("*").order("created_at",{ascending:false}).limit(100),
