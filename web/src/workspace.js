@@ -16,6 +16,7 @@ export async function renderWorkspacePage(view, area, ctx) {
     '<div class="dashboard-grid">'+
     '<article class="metric-card"><span>CONVERSATIONS</span><strong>'+state.conversations.length+'</strong><small>Saved in your account</small></article>'+
     '<article class="metric-card"><span>ACTIVE SKILLS</span><strong>'+state.skills.filter(s=>s.enabled).length+'</strong><small>Enabled instruction sets</small></article>'+
+    '<article class="metric-card"><span>PROJECTS</span><strong>'+(state.projects||[]).filter(p=>p.status==="active").length+'</strong><small>Active workspaces</small></article>'+
     '<article class="metric-card"><span>CONNECTED PLUGINS</span><strong>'+activePlugins+'</strong><small>Available integrations enabled</small></article>'+
     '<article class="metric-card"><span>OPEN TASKS</span><strong>'+pending+'</strong><small>Tasks not completed</small></article></div>'+
     '<div class="dashboard-columns"><section class="panel-card"><div class="section-heading"><h2>Recent conversations</h2><button data-go="chat">Open chat ↗</button></div>'+
