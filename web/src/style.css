@@ -329,3 +329,15 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .project-context{max-width:190px;border:1px solid var(--line);border-radius:999px;background:#11151d;color:#cdd3de;padding:8px 12px;font-size:11px;outline:none}
 .project-context:focus{border-color:#718c4c}
 @media(max-width:700px){.project-context{max-width:128px}.secure-label{display:none}}
+
+
+:root[data-theme="light"]{color:#171b22;background:#f3f5f8;--muted:#687080;--line:#dfe3e9;--panel:#ffffff}
+:root[data-theme="light"] body{background:radial-gradient(ellipse at 52% 0%,#ffffff 0%,#f3f5f8 60%)}
+:root[data-theme="light"] .chat-area,:root[data-theme="light"] .sidebar,:root[data-theme="light"] .models-drawer{background:#f8f9fb;color:#171b22}
+:root[data-theme="light"] .panel-card,:root[data-theme="light"] .metric-card,:root[data-theme="light"] .library-card{background:#fff;border-color:#dfe3e9;color:#171b22}
+:root[data-theme="light"] .list-row,:root[data-theme="light"] .history-item{color:#303846}
+:root[data-theme="light"] .project-context,:root[data-theme="light"] .file-toolbar input[type=search],:root[data-theme="light"] .workspace-page .form-grid input,:root[data-theme="light"] .workspace-page .form-grid textarea,:root[data-theme="light"] .workspace-page .form-grid select{background:#fff;color:#171b22;border-color:#dfe3e9}
+:root[data-theme="light"] .composer{background:#fff;border-color:#dfe3e9}
+:root[data-theme="light"] .composer textarea{color:#171b22}
+:root[data-theme="light"] .agent-toggle{background:#fff;color:#303846;border-color:#dfe3e9}
+:root[data-theme="light"] .library-intro,:root[data-theme="light"] .panel-card p{color:#687080}
