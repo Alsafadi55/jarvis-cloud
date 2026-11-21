@@ -240,3 +240,42 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 @media(prefers-reduced-motion:reduce){
  *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
+
+
+/* JARVIS workspace modules */
+.dashboard-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px;margin:26px 0}
+.metric-card,.panel-card{border:1px solid rgba(130,183,145,.16);border-radius:15px;background:linear-gradient(145deg,rgba(17,31,22,.96),rgba(9,17,12,.96));padding:20px}
+.metric-card{display:grid;gap:10px;min-height:125px}
+.metric-card span{font:10px 'DM Mono';letter-spacing:.13em;color:#83a18e}
+.metric-card strong{font:750 32px Manrope;color:#effff3}
+.metric-card small,.list-row small{font-size:10px;color:#819889}
+.dashboard-columns{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.panel-card h2,.section-heading h2{font:700 16px Manrope;color:#effff3;margin:0}
+.section-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:15px}
+.section-heading button{border:0;background:transparent;color:#80f5a8;font-size:11px;cursor:pointer}
+.list-row{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:12px 0;border:0;border-top:1px solid rgba(130,183,145,.12);background:transparent;color:#d9e9dd;text-align:left;font-size:12px}
+.list-row:hover{color:#8affb4}
+.list-row small{white-space:nowrap}
+.activity-row span{display:grid;gap:5px}
+.activity-row span small{font:10px 'DM Mono';text-transform:uppercase;letter-spacing:.08em}
+.form-grid{display:grid;gap:14px;margin:22px 0}
+.form-grid label{display:grid;gap:8px;color:#afc4b5;font-size:12px}
+.form-grid input,.form-grid textarea,.form-grid select,.library-card select{width:100%;padding:12px;border:1px solid rgba(133,190,151,.2);border-radius:9px;background:#07100a;color:#effbf2;outline:none}
+.form-grid textarea{min-height:110px;resize:vertical}
+.form-grid input:focus,.form-grid textarea:focus,.form-grid select:focus{border-color:#69f0a1}
+.inline-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.workspace-page h1 em{font-style:normal;background:linear-gradient(90deg,#a4ffc0,#38d987 70%,#b1ffd0);background-clip:text;-webkit-background-clip:text;color:transparent}
+.sidebar [id^="nav-"].active{background:rgba(39,133,76,.16);color:#effff3;border-color:rgba(105,240,161,.25);box-shadow:inset 2px 0 #69f0a1}
+@media(max-width:1050px){.dashboard-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){
+ .sidebar{display:flex;position:fixed;z-index:30;left:0;right:0;bottom:0;height:66px;width:100%;padding:6px 8px calc(6px + env(safe-area-inset-bottom));flex-direction:row;align-items:center;justify-content:flex-start;gap:4px;overflow-x:auto;border-right:0;border-top:1px solid rgba(105,240,161,.22);background:rgba(7,15,10,.97);backdrop-filter:blur(22px)}
+ .sidebar .brand,.sidebar .new-chat,.sidebar .side-label,.sidebar .history,.sidebar .profile{display:none}
+ .sidebar [id^="nav-"]{display:flex;flex:0 0 auto;width:auto!important;min-width:58px;height:48px;flex-direction:column;align-items:center;justify-content:center;gap:2px;margin:0!important;padding:5px 8px!important;font-size:9px!important;white-space:nowrap}
+ .chat-area{padding-bottom:66px}
+ .dashboard-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .metric-card{padding:14px;min-height:108px}
+ .metric-card strong{font-size:27px}
+ .dashboard-columns{grid-template-columns:1fr}
+ .inline-fields{grid-template-columns:1fr}
+ .workspace-page{padding-bottom:26px}
+}
