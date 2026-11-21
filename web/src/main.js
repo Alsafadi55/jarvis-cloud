@@ -368,9 +368,9 @@ const PLUGIN_CATALOG=[
  {id:"gmail",name:"Gmail",description:"Find messages and prepare email drafts.",category:"Productivity",status:"Coming soon"},
  {id:"calendar",name:"Google Calendar",description:"Review and organize your schedule.",category:"Productivity",status:"Coming soon"}
 ];
-async function loadSkills(){const {data,error}=await supabase.from("skills").select("*").order("created_at",{ascending:false});if(!error)state.skills=data||[];}
-async function loadPlugins(){const {data,error}=await supabase.from("user_plugins").select("*");if(!error)state.plugins=data||[];}
-async function loadProjects(){const {data,error}=await supabase.from("projects").select("*").order("updated_at",{ascending:false});if(!error)state.projects=data||[];}
+async function loadSkills(){const {data,error}=await supabase.from("skills").select("*").eq("user_id",state.user.id).order("created_at",{ascending:false});if(!error)state.skills=data||[];}
+async function loadPlugins(){const {data,error}=await supabase.from("user_plugins").select("*").eq("user_id",state.user.id);if(!error)state.plugins=data||[];}
+async function loadProjects(){const {data,error}=await supabase.from("projects").select("*").eq("user_id",state.user.id).order("updated_at",{ascending:false});if(!error)state.projects=data||[];}
 async function logActivity(type,title,details=""){try{await supabase.from("activity_events").insert({user_id:state.user.id,event_type:type,title,details});}catch(e){console.warn("Activity log unavailable");}}
 async function showWorkspaceView(view){
  state.view=view;
