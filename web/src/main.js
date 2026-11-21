@@ -126,6 +126,16 @@ async function afterAuth() {
   await loadServerGemini();
   await refreshRestoredModels();
   try {
+    const {data:prefs}=await supabase.from("user_settings").select("preferred_provider,preferred_model,theme").eq("user_id",state.user.id).maybeSingle();
+    if(prefs?.theme){
+      const theme=prefs.theme==="system"?(window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"):prefs.theme;
+      document.documentElement.dataset.theme=theme==="light"?"light":"dark";
+    }
+    if(prefs?.preferred_provider&&prefs?.preferred_model&&state.models.some(m=>m.provider===prefs.preferred_provider&&m.id===prefs.preferred_model)){
+      state.selectedProvider=prefs.preferred_provider;state.selectedModel=prefs.preferred_model;
+    }
+  } catch {}
+  try {
     const saved=JSON.parse(localStorage.getItem("jarvis-model:"+state.user.id)||"null");
     if(saved&&state.models.some(m=>m.provider===saved.provider&&m.id===saved.model)){
       state.selectedProvider=saved.provider;state.selectedModel=saved.model;
