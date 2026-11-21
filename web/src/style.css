@@ -319,3 +319,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .run-status{font:10px 'DM Mono',monospace;font-style:normal;letter-spacing:.08em;color:#d5fb68}
 .run-status.failed{color:#ff9b9b}
 .run-status.running{color:#9cc9ff}
+
+
+.file-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:18px 0}
+.file-toolbar input[type=search]{flex:1;min-width:180px;max-width:380px;border:1px solid var(--line);border-radius:999px;background:#0b0e15;color:#eef0f5;padding:11px 15px}
+.file-card[hidden]{display:none!important}
