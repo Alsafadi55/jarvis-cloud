@@ -131,7 +131,6 @@ Deno.serve(async (req: Request) => {
   const agentMode=body.agent_mode===true;
   const cfg=providers[provider];
   if(!cfg)return json({error:"unsupported_provider",message:"This provider is not supported."},400);
-  if(agentMode&&provider==="anthropic")return json({error:"agent_provider_unsupported",message:"Agent tools are currently available with OpenAI-compatible providers. Choose OpenAI, DeepSeek, xAI, OpenRouter, Groq, Mistral, Together, or Perplexity."},400);
   const suppliedKey=typeof body.api_key==="string"?body.api_key.trim():"";
   const key=suppliedKey||(provider==="gemini"?serverGeminiKey:"");
 
@@ -235,18 +234,37 @@ Deno.serve(async (req: Request) => {
       if(response.ok)reply=(result.output??[]).flatMap((item:any)=>item.content??[])
         .filter((part:any)=>part.type==="output_text").map((part:any)=>part.text??"").join("\n").trim();
     }else if(cfg.kind==="anthropic"){
-      response=await fetch(cfg.base+"/messages",{
-        method:"POST",
-        headers:{"Content-Type":"application/json",...authHeaders(provider,key)},
-        body:JSON.stringify({
-          model,max_tokens:2048,
-          system:systemPrompt,
-          messages:[...ordered.slice(0,-1).map(m=>({role:m.role==="assistant"?"assistant":"user",content:m.content})),{role:"user",content:[{type:"text",text:userPrompt},...imageAttachments.map(a=>({type:"image",source:{type:"base64",media_type:a.type,data:a.data}}))]}],
-        }),
-        signal:controller.signal,
-      });
-      result=await response.json().catch(()=>({}));
-      if(response.ok)reply=(result.content??[]).filter((p:any)=>p.type==="text").map((p:any)=>p.text??"").join("\n").trim();
+      const messages:any[]=[
+        ...ordered.slice(0,-1).map(m=>({role:m.role==="assistant"?"assistant":"user",content:m.content})),
+        {role:"user",content:[{type:"text",text:userPrompt},...imageAttachments.map(a=>({type:"image",source:{type:"base64",media_type:a.type,data:a.data}}))]},
+      ];
+      for(let step=0;step<(agentMode?5:1);step++){
+        response=await fetch(cfg.base+"/messages",{
+          method:"POST",
+          headers:{"Content-Type":"application/json",...authHeaders(provider,key)},
+          body:JSON.stringify({
+            model,max_tokens:2048,system:systemPrompt,messages,
+            ...(agentMode?{tools:agentToolDefinitions.map((item:any)=>({name:item.function.name,description:item.function.description,input_schema:item.function.parameters}))}:{}),
+          }),
+          signal:controller.signal,
+        });
+        result=await response.json().catch(()=>({}));
+        if(!response.ok)break;
+        const blocks=result.content??[];
+        const calls=agentMode?blocks.filter((part:any)=>part.type==="tool_use"):[];
+        if(calls.length){
+          messages.push({role:"assistant",content:blocks});
+          const toolResults:any[]=[];
+          for(const call of calls.slice(0,6)){
+            const toolResult=await runAgentTool(supabase,userId,String(call.name),call.input??{});
+            toolResults.push({type:"tool_result",tool_use_id:call.id,content:JSON.stringify(toolResult)});
+          }
+          messages.push({role:"user",content:toolResults});
+          continue;
+        }
+        reply=blocks.filter((part:any)=>part.type==="text").map((part:any)=>part.text??"").join("\n").trim();
+        break;
+      }
     }else if(cfg.kind==="gemini"){
       const contents:any[]=[
         ...ordered.slice(0,-1).map(m=>({role:m.role==="assistant"?"model":"user",parts:[{text:m.content}]})),
