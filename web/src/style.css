@@ -364,3 +364,6 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .github-connect small{font-size:10px;line-height:1.5;color:var(--muted)}
 .github-connect .delete-skill{justify-self:start}
 :root[data-theme="light"] .github-connect input{background:#fff;color:#171b22;border-color:#dfe3e9}
+
+
+.stop-generation{margin-left:auto;border:1px solid #744448;background:#211316;color:#ffb6b6;border-radius:999px;padding:7px 12px;font-size:11px;font-weight:700;transition:background .2s ease,border-color .2s ease}.stop-generation:hover{background:#351b20;border-color:#b45d66}.stop-generation[hidden]{display:none!important}
