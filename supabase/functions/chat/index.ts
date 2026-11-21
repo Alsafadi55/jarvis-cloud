@@ -470,7 +470,7 @@ Deno.serve(async (req: Request) => {
   }catch(e){
     clearTimeout(timeout);
     const failureMessage=e instanceof Error&&e.name==="AbortError"?"The AI request timed out. Try again.":"The AI provider could not be reached. Please try again.";
-    if(agentRunId)await supabase.from("agent_runs").update({status:"failed",error:failureMessage,actions:agentActions,completed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",agentRunId).eq("user_id",userId);
+    if(agentRunId)await supabase.from("agent_runs").update({status:e instanceof Error&&e.name==="AbortError"?"cancelled":"failed",error:failureMessage,actions:agentActions,completed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",agentRunId).eq("user_id",userId);
     return json({error:"provider_unavailable",message:failureMessage},502);
   }
   clearTimeout(timeout);
