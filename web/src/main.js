@@ -96,6 +96,24 @@ function render() {
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" })[c]);
 }
+function renderMessageContent(value) {
+  let html=escapeHtml(value);
+  const codeBlocks=[];
+  const tick=String.fromCharCode(96);
+  const fenced=new RegExp(tick+"{3}([a-zA-Z0-9_+-]*)\\n([\\s\\S]*?)"+tick+"{3}","g");
+  html=html.replace(fenced,(_,language,code)=>{
+    const index=codeBlocks.push('<pre><code class="language-'+escapeHtml(language)+'">'+code+'</code></pre>')-1;
+    return "@@JARVIS_CODE_"+index+"@@";
+  });
+  html=html.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  html=html.replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>");
+  html=html.replace(/\*([^*\n]+)\*/g,"<em>$1</em>");
+  const inlineCode=new RegExp(tick+"([^"+tick+"]+)"+tick,"g");
+  html=html.replace(inlineCode,'<code class="inline-code">$1</code>');
+  html=html.replace(/\n/g,"<br>");
+  return html.replace(/@@JARVIS_CODE_(\d+)@@/g,(_,index)=>codeBlocks[Number(index)]||"");
+}
+
 function feedback(id, message, kind = "error") {
   const el = document.querySelector("#"+id);
   if (el) { el.textContent = message; el.className = (id === "chat-feedback" ? "chat-feedback " : "feedback ") + kind; }
@@ -205,7 +223,7 @@ async function loadMessages(id) {
     .eq("conversation_id", id).order("created_at", { ascending: true }).limit(100);
   if (error) { area.innerHTML = '<div class="system-notice"><p>Could not load this conversation.</p></div>'; return; }
   if (!data?.length) { showWelcome(); return; }
-  area.innerHTML = data.map(m => `<div class="message ${m.role === "user" ? "user-message" : "assistant-message"}">${escapeHtml(m.content).replace(/\\n/g, "<br>")}</div>`).join("");
+  area.innerHTML = data.map(m => `<div class="message ${m.role === "user" ? "user-message" : "assistant-message"}">${renderMessageContent(m.content)}</div>`).join("");
   area.scrollTop = area.scrollHeight;
 }
 function showWelcome() {
@@ -285,7 +303,7 @@ async function sendMessage(e) {
       attachments:sentFiles.map(x=>({name:x.name,type:x.type,path:x.path,text:x.text||""}))
     }});
     if(error||data?.error)throw new Error(data?.message||data?.error||error?.message||"Request failed.");
-    area.innerHTML=`<div class="message user-message">${escapeHtml(message)}${sentFiles.map(x=>`<div class="file-chip">📎 ${escapeHtml(x.name)}</div>`).join("")}</div><div class="message assistant-message">${escapeHtml(data.message).replace(/\n/g,"<br>")}</div>`;
+    area.innerHTML=`<div class="message user-message">${escapeHtml(message)}${sentFiles.map(x=>`<div class="file-chip">📎 ${escapeHtml(x.name)}</div>`).join("")}</div><div class="message assistant-message">${renderMessageContent(data.message)}</div>`;
     for(const file of sentFiles)await supabase.storage.from("jarvis-user-files").remove([file.path]);
     state.attachments=[];renderAttachmentList();feedback("chat-feedback","", "success");
   }catch(err){
