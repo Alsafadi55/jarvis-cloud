@@ -101,7 +101,7 @@ async function signUp() {
   if (!data.session) return feedback("auth-error", "Account created. Check your email to confirm it, then sign in.", "success");
   state.user = data.user; await afterAuth();
 }
-async function signOut() { await supabase.auth.signOut(); state.user = null; state.conversations = []; state.activeId = null; state.providerKeys = {}; state.models = []; state.selectedProvider = "gemini"; state.selectedModel = ""; state.skills=[]; state.plugins=[]; state.projects=[]; state.attachments=[]; render(); }
+async function signOut() { await supabase.auth.signOut(); state.user = null; state.conversations = []; state.activeId = null; state.providerKeys = {}; state.models = []; state.selectedProvider = "gemini"; state.selectedModel = ""; state.skills=[]; state.plugins=[]; state.projects=[]; state.attachments=[]; state.agentMode=false; render(); }
 async function afterAuth() {
   try { state.providerKeys = await loadProviderKeys(state.user.id); }
   catch (error) { console.warn("Could not restore encrypted provider keys:", error); state.providerKeys = {}; }
@@ -151,6 +151,7 @@ function showWelcome() {
   if (area) area.innerHTML = `<div class="welcome compact"><div class="welcome-orb">${icon("spark")}</div><div class="eyebrow">CONVERSATION SELECTED</div><h1>Ready when<br><em>you are.</em></h1><p>Your messages and replies are saved in this conversation.</p></div>`;
 }
 async function loadServerGemini(){
+ if(state.providerKeys.gemini)return;
  try{
   const result=await supabase.functions.invoke("chat",{body:{action:"models",provider:"gemini"}});
   if(result.error||result.data?.error)return;
@@ -183,7 +184,7 @@ async function connectProvider(provider){
   state.models=state.models.filter(m=>m.provider!==provider).concat((result.data.models||[]).map(m=>({provider:provider,providerName:PROVIDERS.find(p=>p.id===provider).name,id:m.id})));
   state.models.sort((x,y)=>x.providerName.localeCompare(y.providerName)||x.id.localeCompare(y.id));
   state.selectedProvider=provider;state.selectedModel=state.models.find(m=>m.provider===provider)?.id||"";
-  render();document.querySelector("#models-drawer")?.classList.add("open");
+  render();await showWorkspaceView(state.view);document.querySelector("#models-drawer")?.classList.add("open");
   feedback("provider-feedback","Connected "+PROVIDERS.find(p=>p.id===provider).name+". Loaded "+(result.data.models||[]).length+" models.","success");
  }catch(err){feedback("provider-feedback",err.message||"Connection failed.");}
 }
