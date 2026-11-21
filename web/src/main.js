@@ -96,6 +96,12 @@ function render() {
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" })[c]);
 }
+function bindMessageActions(area){
+  area.querySelectorAll("[data-copy-message]").forEach(button=>button.addEventListener("click",async()=>{
+    try{await navigator.clipboard.writeText(button.dataset.copyMessage||"");button.textContent="Copied";setTimeout(()=>{button.textContent="Copy";},1200);}
+    catch{feedback("chat-feedback","Clipboard access is unavailable in this browser.");}
+  }));
+}
 function renderMessageContent(value) {
   let html=escapeHtml(value);
   const codeBlocks=[];
@@ -223,7 +229,8 @@ async function loadMessages(id) {
     .eq("conversation_id", id).order("created_at", { ascending: true }).limit(100);
   if (error) { area.innerHTML = '<div class="system-notice"><p>Could not load this conversation.</p></div>'; return; }
   if (!data?.length) { showWelcome(); return; }
-  area.innerHTML = data.map(m => `<div class="message ${m.role === "user" ? "user-message" : "assistant-message"}">${renderMessageContent(m.content)}</div>`).join("");
+  area.innerHTML = data.map(m => `<div class="message ${m.role === "user" ? "user-message" : "assistant-message"}">${renderMessageContent(m.content)}${m.role==="assistant"?`<button type="button" class="copy-message" data-copy-message="${escapeHtml(m.content)}">Copy</button>`:""}</div>`).join("");
+  bindMessageActions(area);
   area.scrollTop = area.scrollHeight;
 }
 function showWelcome() {
@@ -303,7 +310,8 @@ async function sendMessage(e) {
       attachments:sentFiles.map(x=>({name:x.name,type:x.type,path:x.path,text:x.text||""}))
     }});
     if(error||data?.error)throw new Error(data?.message||data?.error||error?.message||"Request failed.");
-    area.innerHTML=`<div class="message user-message">${escapeHtml(message)}${sentFiles.map(x=>`<div class="file-chip">📎 ${escapeHtml(x.name)}</div>`).join("")}</div><div class="message assistant-message">${renderMessageContent(data.message)}</div>`;
+    area.innerHTML=`<div class="message user-message">${escapeHtml(message)}${sentFiles.map(x=>`<div class="file-chip">📎 ${escapeHtml(x.name)}</div>`).join("")}</div><div class="message assistant-message">${renderMessageContent(data.message)}<button type="button" class="copy-message" data-copy-message="${escapeHtml(data.message)}">Copy</button></div>`;
+    bindMessageActions(area);
     for(const file of sentFiles)await supabase.storage.from("jarvis-user-files").remove([file.path]);
     state.attachments=[];renderAttachmentList();feedback("chat-feedback","", "success");
   }catch(err){
