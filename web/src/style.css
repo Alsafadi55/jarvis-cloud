@@ -367,3 +367,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 
 
 .stop-generation{margin-left:auto;border:1px solid #744448;background:#211316;color:#ffb6b6;border-radius:999px;padding:7px 12px;font-size:11px;font-weight:700;transition:background .2s ease,border-color .2s ease}.stop-generation:hover{background:#351b20;border-color:#b45d66}.stop-generation[hidden]{display:none!important}
+
+
+/* Live assistant response indicator */
+.streaming-cursor{display:inline-block;width:7px;height:1.05em;margin-left:3px;vertical-align:text-bottom;border-radius:2px;background:var(--accent,#b6ff6a);animation:jarvis-cursor-blink 1s steps(2,start) infinite}@keyframes jarvis-cursor-blink{to{visibility:hidden}}
